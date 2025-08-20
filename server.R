@@ -1,8 +1,6 @@
 # Maybe can move the withProgress to outside of the first {
-
 library(shiny)
 # Maybe I should switch to tinyplot? should be a bit more lightweight
-# and without the weird slowdown when switching to dark mode.
 library(ggplot2)
 library(ggdark)
 
@@ -81,13 +79,15 @@ server <- function(input, output, session) {
   accepeted <- F
   modal <- modalDialog(h1("Important notes:"), 
                        HTML("<ol>
-       <li>Our risk estimates are based on the liability threshold model from statistical genetics. They are not directly based on real epidemiological data.</li>
-       <li>Under the model, a disease is assumed to have an underlying, continuous liability. The liability is assumed to be normally distributed and to represent the sum of additive genetic and environmental risk factors. Under the model, an individual is affected if his or her liability exceeds a threshold.</li>
-       <li>The model assumes that each adult individual is either affected or unaffected. Both the prevalence parameter and the risk estimated by the application represent the proportion of affected adults.</li>
-       <li>The model assumes that a PRS explains a proportion R^2 of the variance in the liability in the population. This parameter, which quantifies the accuracy of the score, should already incorporate any reduction in the accuracy of the score due to genotyping errors, an application of the score in populations of non-European descent, elimination of environmental correlates of the score in the setting of comparing sibling embryos, and other factors.</li>
-       <li>All embryos in the model are assumed to have the potential to lead to live birth when transferred. If you instead have, for example, the number of blastocysts, please adjust it accordingly based on specifics of your given case. We assume a single embryo transfer.</li>
-       <li>We assume that the parents screen the embryos for a <b>single disease</b>. We assume random mating (i.e., no assortative mating related to the disease being screened). The calculator does not provide information on the likelihood of increasing the risk of other diseases due to selection. See our paper for more details.</li>
-       <li>Finally, we note that screening IVF embryos with polygenic risk scores may be associated with ethical, social, and legal problems. Please see our paper for more details.</li>
+       <li>Our risk estimates are based on the liability threshold model from statistical genetics. <strong>They are not directly based on real epidemiological data</strong>.</li>
+       <li>We assume that patients screen their embryos for a <strong>single disease</strong>.</li>
+       <li>Under the model, <strong>a disease is assumed to have an underlying, continuous liability</strong>. The liability is normally distributed and it represents the sum of additive genetic and non-genetic risk factors. Under the model, individuals are affected if their liability exceeds a threshold.</li>
+       <li>The model assumes that the <strong>disease status is binary</strong>: an adult individual is either affected or unaffected. Both the prevalence parameter and the estimated risk represent the proportion of affected adults.</li>
+       <li>The model assumes that a PRS explains a proportion R² of the variance in the liability in the population. This parameter, which quantifies the accuracy of the PRS, <strong>should reflect the accuracy of risk prediction between siblings for the setting of interest</strong>. Factors that may reduce accuracy compared to values reported in the literature include, for example, differences in sequencing platforms, genotyping errors, application in populations of non-European descent, population structure, parental environment correlated with child’s genotype, and lower accuracy of the PRS in future years.</li>
+       <li>All embryos are assumed to be <strong>euploid blastocysts</strong>. We assume a single embryo transfer. The outcome of the transfer is a live birth with either probability 1 or a prespecified probability. The <strong>live birth probability is assumed to be identical between embryos and patients</strong>. In the models with a random number of births, it is assumed that <strong>at least one birth was achieved</strong>.</li>
+       <li>The app does not provide information on <strong>the likelihood of increasing the risk of other diseases due to selection</strong>.</li>
+       <li><strong>Other assumptions</strong> underlying the model are discussed in our <a href=\"https://doi.org/10.7554/elife.64716\" target=\"_blank\" rel=\"noopener noreferrer\">paper</a>.</li>
+       <li>Finally, note that screening IVF embryos for polygenic risk scores is associated with <strong>multiple ethical, social, and legal concerns</strong>. For a comprehensive review of epidemiological, clinical, and ethical considerations, please see our <a href=\"https://doi.org/10.1093/humupd/dmae012\" target=\"_blank\" rel=\"noopener noreferrer\">review</a>.</li>
        </ol>"),
                        p("Please confirm that:"),
                        HTML("<ol>
@@ -233,9 +233,14 @@ server <- function(input, output, session) {
       "black"
     }
   })
+  
+  dark_theme <- dark_mode(theme_minimal())
+  
   plot_theme <- reactive({
     if (input$dark_mode == "dark") {
-      dark_theme_minimal() +
+      # dark_theme_minimal() +
+      dark_theme +
+      # theme_dark() #+
         theme(text = element_text(color = "white"))
     } else {
       theme_minimal() +
@@ -680,6 +685,6 @@ server <- function(input, output, session) {
   })
 }
 
-# shinyApp(ui = ui, server = server)
+shinyApp(ui = ui, server = server)
 # runApp(launch.browser = F)
 
