@@ -1,13 +1,17 @@
 library(ggplot2)
 library(tidyr)
 
+source("EmbryoSelection.R")
+
 r2 <- 0.1
 K <- 0.01
 N <- 1:10
 p <- 0.4
-# For binomial:
-# n_0 * p /(1-p) = N, so n_0 = (1-p) * N / p
-n0 <- (1-p)*N / p
+# For binomial, we solve:
+# n_0 * p /(1-(1-p)^n_0) = N
+n0 <- sapply(N, function(N) 
+  optimise(function(n0) (n0*p/(1-(1-p)^n0) - N)^2, 
+           c(0.001, 100))$minimum)
 # For poisson, we solve
 # lambda * p /(1-exp(-lambda*p)) = N
 lambda <- sapply(N, function(N) 
@@ -30,7 +34,6 @@ result_long <- result_long |>
 result_long$name <- factor(result_long$name, 
                            levels = c("Fixed live births", "Binomial", "Poisson"))
 
-
 ggplot(data=result_long, aes(n, value, col=name)) +
   geom_point(size=3) +
   theme_classic() +
@@ -40,8 +43,8 @@ ggplot(data=result_long, aes(n, value, col=name)) +
         legend.text = element_text(size=20),
         legend.position = "bottom") +
   labs(x = "Expected number of live births",
-       y = "Relative risk reduction") +
+       y = "Relative risk reduction(%)") +
   ylim(c(0, max(result_long$value)))
 
-# ggsave("~/Desktop/figure.png", 
-#        width=8, height=5)
+ggsave("~/Desktop/figure.png",
+       width=8, height=5)
