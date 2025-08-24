@@ -1,8 +1,7 @@
 # Maybe can move the withProgress to outside of the first {
 library(shiny)
 # Maybe I should switch to tinyplot? should be a bit more lightweight
-library(ggplot2)
-library(ggdark)
+library(tinyplot)
 
 source("EmbryoSelection.R")
 
@@ -83,7 +82,7 @@ server <- function(input, output, session) {
        <li>We assume that patients screen their embryos for a <strong>single disease</strong>.</li>
        <li>Under the model, <strong>a disease is assumed to have an underlying, continuous liability</strong>. The liability is normally distributed and it represents the sum of additive genetic and non-genetic risk factors. Under the model, individuals are affected if their liability exceeds a threshold.</li>
        <li>The model assumes that the <strong>disease status is binary</strong>: an adult individual is either affected or unaffected. Both the prevalence parameter and the estimated risk represent the proportion of affected adults.</li>
-       <li>The model assumes that a PRS explains a proportion R² of the variance in the liability in the population. This parameter, which quantifies the accuracy of the PRS, <strong>should reflect the accuracy of risk prediction between siblings for the setting of interest</strong>. Factors that may reduce accuracy compared to values reported in the literature include, for example, differences in sequencing platforms, genotyping errors, application in populations of non-European descent, population structure, parental environment correlated with child’s genotype, and lower accuracy of the PRS in future years.</li>
+       <li>The model assumes that a PRS explains a proportion r² of the variance in the liability in the population. This parameter, which quantifies the accuracy of the PRS, <strong>should reflect the accuracy of risk prediction between siblings for the setting of interest</strong>. Factors that may reduce accuracy compared to values reported in the literature include, for example, differences in sequencing platforms, genotyping errors, application in populations of non-European descent, population structure, parental environment correlated with child’s genotype, and lower accuracy of the PRS in future years.</li>
        <li>All embryos are assumed to be <strong>euploid blastocysts</strong>. We assume a single embryo transfer. The outcome of the transfer is a live birth with either probability 1 or a prespecified probability. The <strong>live birth probability is assumed to be identical between embryos and patients</strong>. In the models with a random number of births, it is assumed that <strong>at least one birth was achieved</strong>.</li>
        <li>The app does not provide information on <strong>the likelihood of increasing the risk of other diseases due to selection</strong>.</li>
        <li><strong>Other assumptions</strong> underlying the model are discussed in our <a href=\"https://doi.org/10.7554/elife.64716\" target=\"_blank\" rel=\"noopener noreferrer\">paper</a>.</li>
@@ -138,7 +137,7 @@ server <- function(input, output, session) {
   })
   
   # Is it still needed?
-  choice_names <- c("PRS accuracy (R-squared)", "Disease prevalence", "Number of live births", 
+  choice_names <- c("PRS accuracy (r²)", "Disease prevalence", "Number of live births", 
                     "Percentile")
   choice_values <- c("r2", "Disease prevalence", "Number of embryos", "Percentile")
   
@@ -181,14 +180,20 @@ server <- function(input, output, session) {
         updateSliderInput(session, "N", max = 10,
                           label = "Number of live births")
       }
+      
+      selected <- input$x_var
+      if(selected == choice_values[4]) {
+        selected <- choice_values[1]
+      }
       updateRadioButtons(session, "x_var", choiceNames = choice_names[1:3], 
                          choiceValues = choice_values[1:3], inline = T, 
-                         selected = input$x_var)
+                         selected = selected)
     }
     else {
       choice_names[3] <- "Number of live births"
       updateRadioButtons(session, "x_var", choiceNames = choice_names,
-                                     choiceValues = choice_values, inline = T)
+                                     choiceValues = choice_values, inline = T,
+                         selected = input$x_var)
       updateSliderInput(session, "N", max = 10, label = "Number of live births")
     }
   })
@@ -224,33 +229,28 @@ server <- function(input, output, session) {
       updateSliderInput(session, "sick_siblings", value = input$siblings_n)
     }
   })
-  
-  mode_color <- reactive({
-    if (input$dark_mode == "dark") {
-      "white"
-    }
-    else {
-      "black"
-    }
-  })
-  
-  dark_theme <- dark_mode(theme_minimal())
-  
-  plot_theme <- reactive({
-    if (input$dark_mode == "dark") {
-      # dark_theme_minimal() +
-      dark_theme +
-      # theme_dark() #+
-        theme(text = element_text(color = "white"))
-    } else {
-      theme_minimal() +
-        theme(text = element_text(color = "black"))
-    }
-  })
 
   output$distPlot <- renderPlot({withProgress({
     if (!accepeted) showModal(modal)
     
+    if (input$dark_mode == "dark") {
+      tinytheme("default",
+                bg = "#1D1F21",
+                fg = "#BBBBBB",
+                col.xaxs = "#BBBBBB",
+                col.yaxs = "#BBBBBB",
+                col.lab = "#BBBBBB",
+                col.main = "#BBBBBB",
+                col.sub = "#BBBBBB",
+                col.axis = "#BBBBBB",
+                grid.col = "#6D6D6D",
+                palette.qualitative = "Set 2"
+                )
+    }
+    else {
+      # tinytheme("minimal")
+      tinytheme("default")
+    }
     
     filts <- filter_input()
     # output$distPlot <- renderPlotly({
@@ -264,28 +264,13 @@ server <- function(input, output, session) {
     
     binomial_model <- input$det_random == "Binomial"
     poisson_model <- input$det_random == "Poisson"
-    
-    # if(binomial_model) {
-    #   updateSliderTextInput(session, "N", label = "Number of euploid embryos")
-    #   # choice_names[3] <-  "Number of euploid embryos"
-    # }
-    # else if(poisson_model) {
-    #   updateSliderTextInput(session, "N", label = "Expected number of euploid embryos")
-    #   # choice_names[3] <-  "Expected number of euploid embryos"
-    # }
-    # else {
-    #   updateSliderTextInput(session, "N", label = "Number of live births")
-    #   # choice_names[3] <-  "Number of live births"
-    # }
-
-    # if (input$lowestexclude == "Lowest") {
-    #   updateRadioButtons(session, "x_var", choiceNames = choice_names[1:3], inline = T)
-    # }
-    # else {
-    #   updateRadioButtons(session, "x_var", choiceNames = choice_names, inline = T)
-    # }
         
     selected_x <- input$x_var
+    
+    if (selected_x == "Percentile" & input$lowestexclude == "Lowest") {
+      
+    }
+    
     if(selected_x == "Number of embryos") {
       x <- 2:20
       if (input$lowestexclude == "Lowest") {
@@ -343,7 +328,7 @@ server <- function(input, output, session) {
       # subtitle <- "Lowest strategy"
       x_lab <- "Disease prevalence"
     }
-    else if(selected_x == "r2" || selected_x == "$$R^2$$") {
+    else if(selected_x == "r2" || selected_x == "$$r^2$$") {
       x <- seq(0.01, 1, length = 50)
       # y <- sapply(x, function(x) risk_reduction_lowest(x, input$K, n = input$N))
       if (input$lowestexclude == "Lowest") {
@@ -366,7 +351,7 @@ server <- function(input, output, session) {
       # subtitle <- "Lowest strategy"
       # x_lab <- "PRS r^2"
       # x_lab <- expression("PRS accuracy (R^2)")
-      x_lab <- expression(paste("PRS accuracy (", R^2, ")"))
+      x_lab <- expression(paste("PRS accuracy (", r^2, ")"))
     }
     else if (selected_x == "Percentile") {
       # q
@@ -382,60 +367,85 @@ server <- function(input, output, session) {
       print(selected_x)
     }
     
+    tpar(mar=c(5, 5, 4, 4) + 0.3,
+         bty = "n",
+         grid = T,
+         facet.bg = NULL,
+         facet.border = NULL,
+         xaxt = "labels",
+         yaxt = "labels",
+         font.main = 1,
+         cex.main = 2.5,
+         cex.sub = 2,
+         cex.axis = 1.5,
+         cex.lab = 1.5,
+         grid.lty = 1,
+         grid.lwd = 0.5,
+         lwd = 0.5,
+         lwd.axis = 0.5,
+         palette.qualitative = "Set 2",
+         adj.main = 0.5,
+         adj.sub = 0.5,
+         dynmar = F,
+         side.sub = 3,
+         tcl = -0.3,
+         facet.bg = "gray90",
+         facet.border = "black",
+         pch = 16)
     if(selected_x == "Disease prevalence") {
-      ggplot() +
-        geom_point(mapping = aes(x, 100*y, color = "Relative risk"), size = 3) +
-        geom_line(mapping = aes(x, 100*y, color = "Relative risk")) +
-        geom_point(mapping = aes(x, 100*y*x, color = "Absolute risk"), size = 3) +
-        geom_line(mapping = aes(x, 100*y*x, color = "Absolute risk")) +
-        # theme_minimal() +
-        plot_theme() +
-        labs(
-          title = "Risk reduction",
-          subtitle = subtitle,
-          x = x_lab,
-          y = "Risk reduction (%)"
-        ) +
-        theme(
-          plot.subtitle = element_text(size = 22, hjust = 0.5),
-          plot.title = element_text(size = 25, hjust = 0.5),
-          axis.title.x = element_text(size = 20),
-          axis.title.y = element_text(size = 20),
-          axis.text = element_text(size = 15),
-          # panel.background = element_rect(fill = "#f5f5f5", color = NA),
-          # plot.background = element_rect(fill = "#f5f5f5", color = NA),
-          # panel.grid.minor = element_line(colour = "darkgray"),
-          # panel.grid.major = element_line(colour = "darkgray"),
-          legend.text = element_text(size = 16),
-          legend.title = element_blank()
-        ) +
-        scale_y_continuous(name = "Risk reduction")
+      plot_data <- data.frame(
+        x = c(x, x),
+        risk_value = c(100 * y, 100 * y * x),
+        risk_type = factor(rep(c("Relative risk", "Absolute risk"), each = length(x)))
+      )
+      tinyplot(
+        risk_value ~ x | risk_type,
+        data = plot_data,
+        type = "b", # "b" for both points and lines
+        cex = 1.5,     # Point size, equivalent to 'size' in geom_point
+        lwd = 1.5,     # Line width
+        xlab = x_lab,
+        ylab = "Risk reduction (%)",
+        legend = legend("bottom!", title="", cex=1.5),
+      )
+      
+      mtext("Risk reduction", side=3, line=2.5, cex=2.5)
+      mtext(subtitle, side=3, line=1, cex=2)
     }
     else {
-      ggplot(mapping = aes(x, 100*y)) +
-        geom_point(size = 3, color = mode_color()) +
-        geom_line(color = mode_color()) +
-        # theme_minimal() +
-        plot_theme() +
-        labs(
-          title = "Risk reduction",
-          subtitle = subtitle,
-          x = x_lab,
-          y = "Risk reduction"
-        ) +
-        theme(
-          plot.subtitle = element_text(size = 22, hjust = 0.5),
-          plot.title = element_text(size = 25, hjust = 0.5),
-          axis.title.x = element_text(size = 20),
-          axis.title.y = element_text(size = 20),
-          axis.text = element_text(size = 15),
-          # panel.background = element_rect(fill = "#f5f5f5", color = NA),
-          # plot.background = element_rect(fill = "#f5f5f5", color = NA),
-          # panel.grid.minor = element_line(colour = "darkgray"),
-          # panel.grid.major = element_line(colour = "darkgray")
-        ) +
-        scale_y_continuous(name = "Relative risk reduction (%)",
-                           sec.axis = sec_axis(~.*ifelse(selected_x == "K", x, input$K/100), name = "Absolute risk reduction (%)")) 
+      # Create the initial tinyplot
+      tinyplot(
+        y = 100 * y,
+        x = x,
+        type = "b",
+        col = ifelse(input$dark_mode == "dark", "white", "black"),
+        cex = 1.5,
+        lwd = 1.5,
+        xlab = x_lab,
+        ylab = "Relative risk reduction (%)",
+      )
+      mtext("Risk reduction", side=3, line=2.5, cex=2.5)
+      mtext(subtitle, side=3, line=1, cex=2)
+      
+      # Prepare for adding the second plot layer
+      par(new = TRUE)
+
+      # # This is the transformation for the secondary axis data
+      sec_axis_values <- (100 * y) * ifelse(selected_x == "K", x, input$K / 100)
+      # 
+      # # Plot the secondary data (in this case, it will overlay the first plot,
+      # # which is fine as we only need the axis). We make it invisible.
+      tinyplot(x=x, y=sec_axis_values, type="n", xlab="", ylab="", axes = "n",
+               grid=F)
+      
+      tinyplot:::tinyAxis(side = 4, at = pretty(range(sec_axis_values)),
+                          type="labels")
+      # 
+      # # Add the label for the secondary y-axis
+      mtext("Absolute risk reduction (%)", side = 4, line = 3, cex = 1.5)
+      # 
+      # It's good practice to reset graphical parameters when done
+      # par(mar = c(5, 4, 4, 2) + 0.1, new = FALSE)
     }
   }, message = "Calcuating...")})
   

@@ -44,7 +44,11 @@ slider_and_numeric <- function(id, label, min, max, step, value, helptext = "",
 helpPopup <- function(title, content,
                       placement=c('right', 'top', 'left', 'bottom'),
                       trigger=c('click', 'hover', 'focus', 'manual')) {
-  tooltip(bsicons::bs_icon("question-circle"), content, id="tip", placement = placement)
+  # tooltip(bsicons::bs_icon("question-circle"), content, id="tip", placement = placement)
+  tooltip(HTML('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-question-circle" viewBox="0 0 16 16">
+  <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14m0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16"/>
+  <path d="M5.255 5.786a.237.237 0 0 0 .241.247h.825c.138 0 .248-.113.266-.25.09-.656.54-1.134 1.342-1.134.686 0 1.314.343 1.314 1.168 0 .635-.374.927-.965 1.371-.673.489-1.206 1.06-1.168 1.987l.003.217a.25.25 0 0 0 .25.246h.811a.25.25 0 0 0 .25-.25v-.105c0-.718.273-.927 1.01-1.486.609-.463 1.244-.977 1.244-2.056 0-1.511-1.276-2.241-2.673-2.241-1.267 0-2.655.59-2.75 2.286m1.557 5.763c0 .533.425.927 1.01.927.609 0 1.028-.394 1.028-.927 0-.552-.42-.94-1.029-.94-.584 0-1.009.388-1.009.94"/>
+</svg>'), content, id="tip", placement = placement)
 }
 
 disclamir_and_date_text <- HTML("<p align=\"center\"><b><font color = \"red\">The application is intended for research purposes only and is not intended to guide clinical decision making</font></b><br>",
@@ -84,7 +88,7 @@ about_panel <- page_fillable(h1("About", align = "center"),
                              h3("Disease parameters"),
                              p("Users should specify the following parameters."),
                              HTML("<ol>
-                                   <li>PRS accuracy ($R^2$): The proportion of variance in liability to the disease explained by the PRS. This is a commonly used measure of PRS accuracy. $R^2$ is currently between 5-15% for most common polygenic diseases.</li>
+                                   <li>PRS accuracy ($r^2$): The proportion of variance in liability to the disease explained by the PRS. This is a commonly used measure of PRS accuracy. $r^2$ is currently between 5-15% for most common polygenic diseases.</li>
                                    <li>The disease prevalence. The proportion of individuals in the (adult) population affected by the disease.</li>
                                    <li>The heritability of the disease ($h^2$). The proportion of variance in the liability of the disease explained by additive genetic factors. (Only required when specifying the disease status of family members.)</li>
                                    </ol>"),
@@ -124,7 +128,7 @@ plot_panel <- page_fillable(
                                       slider_and_numeric("p_lb", "Probability of live birth:",
                                                          0.01, 0.99, 0.01, value=0.3, 
                                                          helptext = "Live birth rate per euploid embryo transfer"))),
-    radioButtons("x_var", "Variable for x axis", choiceNames = c("R-squared", "Disease prevalence", "Number of embryos"), 
+    radioButtons("x_var", "Variable for x axis", choiceNames = c("r²", "Disease prevalence", "Number of embryos"), 
                  choiceValues = c("r2", "Disease prevalence", "Number of embryos"),
                  selected = "r2",
                  inline = T),
@@ -134,7 +138,7 @@ plot_panel <- page_fillable(
     )),
   card(
     conditionalPanel("input.x_var != \"r2\"",
-                     slider_and_numeric("r", "PRS accuracy ($R^2$):", 0.01, 1, NULL, 0.05, 
+                     slider_and_numeric("r", "PRS accuracy ($r^2$):", 0.01, 1, NULL, 0.05, 
                                         "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15.")),
     conditionalPanel("input.x_var != \"Disease prevalence\"",
                      slider_and_numeric("K", "Disease prevalence:", 0.001*100, 0.3*100, 
@@ -200,7 +204,7 @@ calc_panel <- page_fillable(
                                            100*sort(unique(c(seq(0.001, 0.3, 0.001), 
                                                              round(exp(seq(log(0.001), log(0.3), length = 500)), digits = 4)))), 100*0.001, "Fraction of the population with the disease",
                                            post = "%"),
-                        slider_and_numeric("r2", "PRS accuracy ($R^2$):", 0.01, 0.99, NULL, 0.05, "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15. Must be smaller than $h^2$ when conditioning on family disease status."),
+                        slider_and_numeric("r2", "PRS accuracy ($r^2$):", 0.01, 0.99, NULL, 0.05, "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15. Must be smaller than $h^2$ when conditioning on family disease status."),
                         slider_and_numeric("q2", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.1, all embryos with PRS at the top 10% of the distribution of the PRS in the population will be excluded. If no embryo is avaliable, select one at random.")),
                         slider_and_numeric("h2", "$h^2:$", 0.01, 0.99, 0.01, 0.4, "The heritability of the disease. Only relevant when conditioning on the family disease status."))),
                  card(card_header("Family information", style = "text-align: center;"),
@@ -260,8 +264,8 @@ calc_two_traits <- div(class = "well", fluidRow(column(4,
                                                        slider_and_numeric("rho", '$\\rho$, the genetic correlation between the diseases:', -0.99, 0.99, 0.01, 0, "The genetic correlation between the two diseases."),
                                                        slider_and_numeric("samples_2", "Number of monte carlo draws:", 100000, 500000, 1000, 100000, "The number of simulations. Higher number will give a more accurate estimate, but might take longer to run.")),
                                                 column(4, 
-                                                       slider_and_numeric("r2_1", "PRS accuracy ($R^2 ~ \\text{disease 1}$):", 0.01, 1, 0.001, 0.05, "The proportion of the variance in the liability of the first disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.1."),
-                                                       slider_and_numeric("r2_2", "PRS accuracy ($R^2 ~ \\text{disease 2}$):", 0.01, 1, 0.001, 0.05, "The proportion of the variance in the liability of the second disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.1."),
+                                                       slider_and_numeric("r2_1", "PRS accuracy ($r^2 ~ \\text{disease 1}$):", 0.01, 1, 0.001, 0.05, "The proportion of the variance in the liability of the first disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.1."),
+                                                       slider_and_numeric("r2_2", "PRS accuracy ($r^2 ~ \\text{disease 2}$):", 0.01, 1, 0.001, 0.05, "The proportion of the variance in the liability of the second disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.1."),
                                                        fluidRow(column(8, offset = 2, htmlOutput("two_traits"), align = "center"))),
                                                 column(4, 
                                                        slider_and_numeric("K_1", "Prevalence of disease 1:", 0.001, 0.3, unique(round(exp(seq(log(0.001), log(0.3), length = 500)), digits = 4)), 0.001, "How prevalent is the first disease in the population? 0.01 means that 1% of the population have the disease, and 0.2 means that 20% of the population have the disease."),
