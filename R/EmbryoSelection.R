@@ -596,6 +596,7 @@ sample_truncated_poisson <- function(num_samples, lambda) {
 # i.e. the n samples x are so Gx > zk (or <, depending on directions)
 # Could probably also use the function from tmvtnorm.
 #' @import tmvtnorm
+#' @import mvnfast
 sample_func <- function(n, zk, G, Sigma, directions) {
   d <- nrow(Sigma)
   if (ncol(G) != d) {stop("The number of cols in G should be the same as the dimension of Sigma.")}
