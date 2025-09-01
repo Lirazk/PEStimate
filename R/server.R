@@ -1,9 +1,6 @@
 # Maybe can move the withProgress to outside of the first {
-library(shiny)
-# Maybe I should switch to tinyplot? should be a bit more lightweight
-library(tinyplot)
-
-# source("EmbryoSelection.R")
+# library(shiny)
+# library(tinyplot)
 
 print_family_history <- function(temp) {
   cat(
@@ -523,8 +520,7 @@ server <- function(input, output, session) {
                 K = input$K2/100,
                 lambda = input$N2 * input$p_lb2,
                 qf = 1-input$qf2,
-                qm = 1-input$qm2,
-                parental_avg_given = F)
+                qm = 1-input$qm2)
           }
         }
         print_result_conditional(temp)
@@ -699,6 +695,10 @@ server <- function(input, output, session) {
 #' @examples
 #' shiny_calculator()
 #'
+#' @import shiny
+#' @import shinyWidgets
+#' @import bslib
+#' @import tinyplot
 #' @export
 shiny_calculator <- function() {
   shinyApp(ui = ui, server = server)

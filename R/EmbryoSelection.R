@@ -1,6 +1,4 @@
-library(tmvtnorm)
-# devtools::install_local(path = ".", force = TRUE, quiet = FALSE)
-
+# library(tmvtnorm)
 
 #' Risk reduction using the lowest PRS strategy
 #' 
@@ -597,6 +595,7 @@ sample_truncated_poisson <- function(num_samples, lambda) {
 # Sample from normal distribution with linear inequalities.
 # i.e. the n samples x are so Gx > zk (or <, depending on directions)
 # Could probably also use the function from tmvtnorm.
+#' @import tmvtnorm
 sample_func <- function(n, zk, G, Sigma, directions) {
   d <- nrow(Sigma)
   if (ncol(G) != d) {stop("The number of cols in G should be the same as the dimension of Sigma.")}
@@ -659,6 +658,7 @@ sample_func <- function(n, zk, G, Sigma, directions) {
 #' is selected from the non-excluded ones. If there are no embryos after the
 #' exclusion, one embryo is selected at random. NULL if the strategy is "lowest_prs".
 #' @param random_strategy One of "Fixed", "Binomial" or "Poisson".
+#' @importFrom matrixStats rowMins
 #' @param p The probability of live birth (relevant only if random_strategy is either Binomial or Poisson), in range of 0-1.
 risk_parents_offspring_generic <- function(iter, n, r2, h2, K,
                                            sick_parents = 0,

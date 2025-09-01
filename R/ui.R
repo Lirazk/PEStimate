@@ -5,9 +5,9 @@
 # Cache results?
 # Minify things?
 
-library(shiny)
-library(shinyWidgets)
-library(bslib)
+# library(shiny)
+# library(shinyWidgets)
+# library(bslib)
 
 slider_and_numeric <- function(id, label, min, max, step, value, helptext = "",
                                placement = "bottom",
