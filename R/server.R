@@ -3,7 +3,7 @@ library(shiny)
 # Maybe I should switch to tinyplot? should be a bit more lightweight
 library(tinyplot)
 
-source("EmbryoSelection.R")
+# source("EmbryoSelection.R")
 
 print_family_history <- function(temp) {
   cat(
@@ -355,7 +355,8 @@ server <- function(input, output, session) {
     }
     else if (selected_x == "Percentile") {
       # q
-      x <- seq(0.01, 1, length = 50)
+      x <- seq(0.01, 0.99, length = 50)
+      # print(x)
       # y <- sapply(x, function(x) risk_reduction_exclude(filts$r, filts$K, x, n = filts$N))
       y <- sapply(x, function(x) risk_reduction_exclude(filts$r, filts$K/100, x, n = filts$N))
       # if (input$relative_abs == "Absolute risk") y  <- y * input$K
@@ -496,8 +497,7 @@ server <- function(input, output, session) {
               q = input$q2,
               n = input$N2,
               qf = 1-input$qf2,
-              qm = 1-input$qm2,
-              relative = T)
+              qm = 1-input$qm2)
         }
         else {
           temp <-
@@ -506,9 +506,7 @@ server <- function(input, output, session) {
               K = input$K2/100,
               n = input$N2,
               qf = 1-input$qf2,
-              qm = 1-input$qm2,
-              relative = T,
-              parental_avg_given = F)
+              qm = 1-input$qm2)
           if (binomial_model) {
             temp <-
               risk_reduction_lowest_conditional_bin(
@@ -516,9 +514,7 @@ server <- function(input, output, session) {
                 K = input$K2/100,
                 n = input$N2,
                 qf = 1-input$qf2,
-                qm = 1-input$qm2,
-                relative = T,
-                parental_avg_given = F, input$p_lb2)
+                qm = 1-input$qm2, input$p_lb2)
           }
           else if (poisson_model) {
             temp <-
@@ -528,7 +524,6 @@ server <- function(input, output, session) {
                 lambda = input$N2 * input$p_lb2,
                 qf = 1-input$qf2,
                 qm = 1-input$qm2,
-                relative = T,
                 parental_avg_given = F)
           }
         }
@@ -693,6 +688,20 @@ server <- function(input, output, session) {
     
     tags$a("", tags$img(src = logo_src, width = "200px", height = "80px"))
   })
+}
+
+
+#' Shiny based calculator for risk reductions.
+#' 
+#' Opens a shiny calculator which allows the user to estimate the expected risk and risk reduction
+#' of PRS based embryo selection.
+#' 
+#' @examples
+#' shiny_calculator()
+#'
+#' @export
+shiny_calculator <- function() {
+  shinyApp(ui = ui, server = server)
 }
 
 # shinyApp(ui = ui, server = server)

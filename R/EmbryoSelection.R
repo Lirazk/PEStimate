@@ -1,21 +1,28 @@
-library(MASS)
-library(mvnfast)
-library(OwenQ)
+library(tmvtnorm)
+# devtools::install_local(path = ".", force = TRUE, quiet = FALSE)
 
-# Some silly micro-optimization instead of using one more general log(pnorm(b) - pnorm(a)), 
-# should also be more accurate though.
-# log_dtruncnorm_left <- function(x, a) {
-#   dnorm(x, log = T) - pnorm(a, lower.tail = F, log.p = T)
-# }
-# 
-# log_dtruncnorm_right <- function(x, b) {
-#   dnorm(x, log = T) - pnorm(b, log.p = T)
-# }
 
-# The next four functions are basically the same ones as before.
-
+#' Risk reduction using the lowest PRS strategy
+#' 
+#' Calculate the relative risk reduction of the lowest PRS embryo based on the 
+#' PRS accuracy ($r^2$), disease prevalence (K) and number of embryos (n).
+#' 
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param n The number of live births. Any integer >= 1, though with 1 of course
+#' the risk reduction is 0 (or close to it due to numerical reasons I didn't bother
+#' handling separately).
+#' 
+#' @return The relative risk reduction.
+#' 
+#' @examples
+#' risk_reduction_lowest(0.05, 0.01, 5)
+#'
+#' @export
 risk_reduction_lowest = function(r2,K,n)
 {
+  stopifnot(r2 >=0, r2 <=1, K > 0,  K < 1, n >=1)
   r = sqrt(r2)
   zk = qnorm(K, lower.tail=F)
   integrand_lowest = function(t)
@@ -32,83 +39,187 @@ risk_reduction_lowest = function(r2,K,n)
   return(reduction)
 }
 
-risk_reduction_exclude = function(r2,K,q,n)
-{
-  r = sqrt(r2)
-  zk = qnorm(K, lower.tail=F)
-  zq = qnorm(q, lower.tail=F)
-  integrand_t = function(t,u)
-  {
-    y = dnorm(t)*pnorm((zk-r/sqrt(2)*(u+t))/sqrt(1-r2),lower.tail=F)
-    return(y)
-  }
-  # Replacement for integrand_t, should be numerically better.
-  inner_integral <- function(x, a, b) {
-    if (is.infinite(x)) {
-      OwenT(x, a/(x * sqrt(1+b^2))) + OwenT(a/sqrt(1+b^2), (x * sqrt(1+b^2)) / a) -
-        # OwenT(x, b) - OwenT(a/sqrt(1+b^2), (a*b+x*(1+b^2))/a) + pnorm(x) * pnorm(a / sqrt(1+b^2))
-        OwenT(a/sqrt(1+b^2), (a*b+x*(1+b^2))/a) + pnorm(x) * pnorm(a / sqrt(1+b^2))
+# risk_reduction_exclude_old = function(r2,K,q,n)
+# {
+#   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, q > 0, q < 1, n >=1)
+#   r = sqrt(r2)
+#   zk = qnorm(K, lower.tail=F)
+#   zq = qnorm(q, lower.tail=F)
+#   integrand_t = function(t,u)
+#   {
+#     y = dnorm(t)*pnorm((zk-r/sqrt(2)*(u+t))/sqrt(1-r2),lower.tail=F)
+#     return(y)
+#   }
+#   # Replacement for integrand_t, should be numerically better.
+#   inner_integral <- function(x, a, b) {
+#     if (is.infinite(x)) {
+#       OwenT(x, a/(x * sqrt(1+b^2))) + OwenT(a/sqrt(1+b^2), (x * sqrt(1+b^2)) / a) -
+#         # OwenT(x, b) - OwenT(a/sqrt(1+b^2), (a*b+x*(1+b^2))/a) + pnorm(x) * pnorm(a / sqrt(1+b^2))
+#         OwenT(a/sqrt(1+b^2), (a*b+x*(1+b^2))/a) + pnorm(x) * pnorm(a / sqrt(1+b^2))
+#     }
+#     else {
+#       OwenT(x, a/(x * sqrt(1+b^2))) + OwenT(a/sqrt(1+b^2), (x * sqrt(1+b^2)) / a) -
+#         OwenT(x, (a+b*x)/x) - OwenT(a/sqrt(1+b^2), (a*b+x*(1+b^2))/a) + pnorm(x) * pnorm(a / sqrt(1+b^2))
+#     }
+#   }
+#   
+#   integrand_u = function(us)
+#   {
+#     y = numeric(length(us))
+#     beta_vec = zq*sqrt(2)-us
+#     denom = pnorm(beta_vec)
+#     dnorm_u <- dnorm(us)
+#     denom <- ifelse(denom==0, 1e-300, denom) # Avoid dividing by zero
+#     
+#     a <- (zk - r/sqrt(2) * us) / sqrt(1-r2)
+#     b <- -(r/sqrt(2)) / sqrt(1-r2)
+#     
+#     for (i in seq_along(us))
+#     {
+#       u = us[i]
+#       beta <- beta_vec[i]
+#       # internal_int = integrate(integrand_t,-Inf,beta,u, abs.tol = 1e-10)$value
+#       
+#       internal_int = ifelse(r2 != 1, pnorm(beta) - inner_integral(beta, a[i], b) + inner_integral(-Inf, a[i], b),
+#                             ifelse(beta < sqrt(2) / r * zk - u, 0, pnorm(beta) - pnorm(sqrt(2) / r * zk - u)))
+#       numer = dnorm_u[i]*(1-(1-denom[i])^n) * internal_int
+#       term1 = numer/denom[i]
+#       
+#       # Probably doesn't matter, but also numerically more stable
+#       # term1 <- exp(dnorm(u, log = T) + VGAM::log1mexp(-n*pnorm(beta, lower.tail = F, log.p = T)) -
+#       #                pnorm(beta, log.p = T)) * internal_int
+#       
+#       # internal_int = integrate(integrand_t,beta,Inf,u, abs.tol = 1e-10)$value
+#       internal_int <- ifelse(r2 != 1, 1 - pnorm(beta) - inner_integral(Inf, a[i], b) + inner_integral(beta, a[i], b),
+#                              ifelse(beta < sqrt(2) / r * zk - u, 1-pnorm(sqrt(2) / r * zk - u), 1-pnorm(beta)))
+#       term2 = dnorm_u[i]*(1-denom[i])^(n-1) * internal_int
+#       y[i] = term1 + term2
+#       # print(sprintf("%f", y[i]))
+#     }
+#     return(y)
+#   }
+#   risk = integrate(integrand_u,-Inf,Inf, abs.tol = K * 1e-4)$value
+#   reduction = (K-risk)/K
+#   # K-risk
+#   return(reduction)
+# }
+
+#' Risk reduction using the exclude strategy
+#' 
+#' Calculate the relative risk reduction of a randomly selected embryo out
+#' of embryos with PRS lower than a specific quantile (q), as a function of
+#' PRS accuracy ($r^2$), disease prevalence (K) and number of embryos (n).
+#' *In case there are no embryos to select from, a random one is selected.*
+#' 
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param q The threshold quantile, in range of 0-1. When possible, embryos with PRS greater than
+#' then 1-q quantile are excluded from the selection, and a random embryo
+#' is selected from the non-excluded ones. If there are no embryos after the
+#' exclusion, one embryo is selected at random.
+#' @param n The number of live births. Any integer >= 1, though with 1 of course
+#' the risk reduction is 0 (or close to it due to numerical reasons I didn't bother
+#' handling separately).
+#' 
+#' @return The relative risk reduction.
+#' 
+#' @examples
+#' risk_reduction_exclude(0.05, 0.01, 0.05, 5) # Exclude top 5% risk.
+#'
+#' @export
+risk_reduction_exclude <- function(r2, K, q, n) {
+  stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, q > 0, q < 1, n >=1)
+  
+  r <- sqrt(r2)
+  zk <- qnorm(K, lower.tail = FALSE)
+  zq <- qnorm(q, lower.tail = FALSE)
+  
+  integrand_u <- function(us) {
+    us <- as.numeric(us)
+    beta_vec <- zq * sqrt(2) - us
+    denom <- pnorm(beta_vec)
+    denom_safe <- ifelse(denom == 0, 1e-300, denom)
+    dnorm_u <- dnorm(us)
+    
+    a <- (zk - r / sqrt(2) * us) / sqrt(1 - r2)
+    b <- -(r / sqrt(2)) / sqrt(1 - r2)
+    
+    if (r2 != 1) {
+      inner_beta <- inner_integral_vec_rcpp(beta_vec, a, b) 
+      p_beta <- pnorm(beta_vec)
+      
+      # precompute inner integrals at ±Inf once per element
+      inner_inf_neg <- inner_integral_vec_rcpp(rep(-Inf, length(a)), a, b)
+      inner_inf_pos <- inner_integral_vec_rcpp(rep(Inf, length(a)), a, b)
+      
+      internal_int1 <- p_beta - inner_beta + inner_inf_neg
+      internal_int2 <- 1 - p_beta - inner_inf_pos + inner_beta
+      
+      numer1 <- dnorm_u * (1 - (1 - denom)^n) * internal_int1
+      term1 <- numer1 / denom_safe
+      
+      term2 <- dnorm_u * (1 - denom)^(n - 1) * internal_int2
+      
+      y <- term1 + term2
+    } else {
+      # r2 == 1 special case vectorised
+      thr <- sqrt(2) / r * zk - us
+      p_thr <- pnorm(thr)
+      
+      # internal_int1: if beta < thr then 0 else p_beta - p_thr
+      p_beta <- pnorm(beta_vec)
+      internal_int1 <- ifelse(beta_vec < thr, 0, p_beta - p_thr)
+      internal_int2 <- ifelse(beta_vec < thr, 1 - p_thr, 1 - p_beta)
+      
+      numer1 <- dnorm_u * (1 - (1 - denom)^n) * internal_int1
+      term1 <- numer1 / denom_safe
+      term2 <- dnorm_u * (1 - denom)^(n - 1) * internal_int2
+      y <- term1 + term2
     }
-    else {
-      OwenT(x, a/(x * sqrt(1+b^2))) + OwenT(a/sqrt(1+b^2), (x * sqrt(1+b^2)) / a) -
-        OwenT(x, (a+b*x)/x) - OwenT(a/sqrt(1+b^2), (a*b+x*(1+b^2))/a) + pnorm(x) * pnorm(a / sqrt(1+b^2))
-    }
+    
+    y
   }
   
-  integrand_u = function(us)
-  {
-    y = numeric(length(us))
-    beta_vec = zq*sqrt(2)-us
-    denom = pnorm(beta_vec)
-    dnorm_u <- dnorm(us)
-    denom <- ifelse(denom==0, 1e-300, denom) # Avoid dividing by zero
-    
-    a <- (zk - r/sqrt(2) * us) / sqrt(1-r2)
-    b <- -(r/sqrt(2)) / sqrt(1-r2)
-    
-    for (i in seq_along(us))
-    {
-      u = us[i]
-      beta <- beta_vec[i]
-      # internal_int = integrate(integrand_t,-Inf,beta,u, abs.tol = 1e-10)$value
-      
-      internal_int = ifelse(r2 != 1, pnorm(beta) - inner_integral(beta, a[i], b) + inner_integral(-Inf, a[i], b),
-                            ifelse(beta < sqrt(2) / r * zk - u, 0, pnorm(beta) - pnorm(sqrt(2) / r * zk - u)))
-      numer = dnorm_u[i]*(1-(1-denom[i])^n) * internal_int
-      term1 = numer/denom[i]
-      
-      # Probably doesn't matter, but also numerically more stable
-      # term1 <- exp(dnorm(u, log = T) + VGAM::log1mexp(-n*pnorm(beta, lower.tail = F, log.p = T)) - 
-      #                pnorm(beta, log.p = T)) * internal_int
-      
-      # internal_int = integrate(integrand_t,beta,Inf,u, abs.tol = 1e-10)$value
-      internal_int <- ifelse(r2 != 1, 1 - pnorm(beta) - inner_integral(Inf, a[i], b) + inner_integral(beta, a[i], b),
-                             ifelse(beta < sqrt(2) / r * zk - u, 1-pnorm(sqrt(2) / r * zk - u), 1-pnorm(beta)))
-      term2 = dnorm_u[i]*(1-denom[i])^(n-1) * internal_int
-      y[i] = term1 + term2
-      # print(sprintf("%f", y[i]))
-    }
-    return(y)
-  }
-  risk = integrate(integrand_u,-Inf,Inf, abs.tol = K * 1e-4)$value
-  reduction = (K-risk)/K
-  # K-risk
-  return(reduction)
+  risk <- integrate(integrand_u, -Inf, Inf, abs.tol = K * 1e-4)$value
+  reduction <- (K - risk) / K
+  reduction
 }
 
-risk_reduction_lowest_conditional = function(r2,K,n,qf,qm,relative=T,parental_avg_given=F)
+#' Risk reduction using the lowest PRS strategy given the parents' PRS
+#' 
+#' Calculate the relative risk reduction of the lowest PRS embryo, 
+#' when the parents' PRS is known (qf and qm), based on the 
+#' PRS accuracy ($r^2$), disease prevalence (K) and number of embryos (n).
+#' 
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param n The number of live births. Any integer >= 1, though with 1 of course
+#' the risk reduction is 0 (or close to it due to numerical reasons I didn't bother
+#' handling separately).
+#' @param qf The father's PRS quantile, in range of 0-1. 
+#' @param qm The mother's PRS quantile, in range of 0-1.
+#' 
+#' @return The relative risk reduction.
+#' 
+#' @examples
+#' # The risk when one parent is in the top 5% of PRS, and the second in the median.
+#' risk_reduction_lowest_conditional(0.05, 0.01, 5, 0.95, 0.5) 
+#'
+#' @export
+risk_reduction_lowest_conditional = function(r2,K,n,qf,qm)
 {
+  stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, n >=1,
+            qf < 0, qf < 1,
+            qm > 0, qf < 1)
+  
   r = sqrt(r2)
   zk = qnorm(K, lower.tail=F)
   zqf = qnorm(qf)
   zqm = qnorm(qm)
-  if (parental_avg_given)
-  {
-    # It is assumed that what is given is directly the parental average, so that the paternal and maternal quantiles are the same (both representing the quantile of the parental average)
-    c = zqf * r/sqrt(2)
-  } else {
-    c = (zqf+zqm)/2 * r
-  }
+  c = (zqf+zqm)/2 * r
+  
   baseline = pnorm((zk-c)/sqrt(1-r2/2),lower.tail=F)
   integrand_lowest_cond = function(t)
   {
@@ -118,16 +229,40 @@ risk_reduction_lowest_conditional = function(r2,K,n,qf,qm,relative=T,parental_av
   }
   # risk = integrate(integrand_lowest_cond,-Inf,Inf,rel.tol=1e-9)$value
   risk = integrate(integrand_lowest_cond,-Inf,Inf, abs.tol = baseline * 1e-4)$value
-  if (relative) {
-    reduction = (baseline-risk)/baseline
-  } else {
-    reduction = baseline-risk
-  }
+  reduction = (baseline-risk)/baseline
   return(list(rr=reduction, baseline=baseline, risk=risk))
 }
 
-risk_reduction_exclude_conditional = function(r2,K,q,n,qf,qm,relative=T)
+#' Risk reduction using the exclude strategy, conditional on the parents' PRS.
+#' 
+#' Calculate the relative risk reduction of a randomly selected embryo out
+#' of embryos with PRS lower than a specific quantile (q), when the parents' PRS is known (qf and qm), 
+#' as a function of PRS accuracy ($r^2$), disease prevalence (K) and number of embryos (n).
+#' *In case there are no embryos to select from, a random one is selected.*
+#' 
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param q The threshold quantile, in range of 0-1. When possible, embryos with PRS greater than
+#' then 1-q quantile are excluded from the selection, and a random embryo
+#' is selected from the non-excluded ones. If there are no embryos after the
+#' exclusion, one embryo is selected at random.
+#' @param qf The father's PRS quantile, in range of 0-1. 
+#' @param qm The mother's PRS quantile, in range of 0-1.
+#' 
+#' @return The relative risk reduction.
+#' 
+#' @examples
+#' # The risk when one parent is in the top 5% of PRS, and the second in the median.
+#' risk_reduction_lowest_conditional(0.05, 0.01, 5, 0.95, 0.5) 
+#'
+#' @export
+risk_reduction_exclude_conditional = function(r2,K,q,n,qf,qm)
 {
+  stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, q > 0, q < 1, n >=1,
+            qf > 0, qf < 1,
+            qm > 0, qm < 1)
+  
   r = sqrt(r2)
   zk = qnorm(K, lower.tail=F)
   zq = qnorm(q, lower.tail=F)
@@ -155,11 +290,7 @@ risk_reduction_exclude_conditional = function(r2,K,q,n,qf,qm,relative=T)
   
   risk = term1 + term2
   
-  if (relative) {
-    reduction = (baseline-risk)/baseline
-  } else {
-    reduction = baseline-risk
-  }
+  reduction = (baseline-risk)/baseline
   return(list(rr=reduction, baseline=baseline, risk=risk))
 }
 
@@ -234,8 +365,30 @@ simulate_lowest_risk_two_traits = function(r2A,r2B,rho,KA,KB,ns,nfam=10000)
 # I can probably refactor the next three function, since they are almost identical
 # to the non random case, just with a slightly different inner integral.
 
+#' Risk reduction using the lowest PRS strategy, when the number of live births is binomial
+#' 
+#' Calculate the relative risk reduction of the lowest PRS embryo based on the 
+#' PRS accuracy ($r^2$), disease prevalence (K), number of embryos (n) and probability
+#' of live birth (p).
+#' 
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param n The number of live births. Any integer >= 1, though with 1 of course
+#' the risk reduction is 0 (or close to it due to numerical reasons I didn't bother
+#' handling separately).
+#' @param p The probability of live birth, in range of 0-1.
+#' 
+#' @return The relative risk reduction.
+#' 
+#' @examples
+#' risk_reduction_lowest_bin(0.05, 0.01, 10, 0.5)
+#'
+#' @export
 risk_reduction_lowest_bin <- function(r2, K, n, p)
 {
+  stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, n >=1,
+            p > 0, p <= 1)
   r = sqrt(r2)
   zk = qnorm(K, lower.tail=F)
   integrand_lowest = function(t)
@@ -253,8 +406,28 @@ risk_reduction_lowest_bin <- function(r2, K, n, p)
   return(reduction)
 }
 
+#' Risk reduction using the lowest PRS strategy, when the number of live births is Poisson
+#' 
+#' Calculate the relative risk reduction of the lowest PRS embryo based on the 
+#' PRS accuracy ($r^2$), disease prevalence (K) and expected number of live births (lambda).
+#' In the calculator we use lambda = n * p, where p is the probability of live birth and
+#' n the expected number of embryos.
+#' 
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param lambda The expected number of live births. Any integer >= 1.
+#' 
+#' @return The relative risk reduction.
+#' 
+#' @examples
+#' risk_reduction_lowest_pois(0.05, 0.01, 5)
+#'
+#' @export
 risk_reduction_lowest_pois <- function(r2, K, lambda)
 {
+  stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, lambda > 0)
+  
   r = sqrt(r2)
   zk = qnorm(K, lower.tail=F)
   integrand_lowest = function(t)
@@ -272,19 +445,43 @@ risk_reduction_lowest_pois <- function(r2, K, lambda)
   return(reduction)
 }
 
-risk_reduction_lowest_conditional_bin = function(r2,K,n,qf,qm,relative=T,parental_avg_given=F, p)
+#' Risk reduction using the lowest PRS strategy given the parents' PRS, when the number of live births is binomial
+#' 
+#' Calculate the relative risk reduction of the lowest PRS embryo, 
+#' when the parents' PRS is known (qf and qm), based on the 
+#' PRS accuracy ($r^2$), disease prevalence (K) and number of embryos (n) and probability
+#' of live birth (p).
+#' 
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param n The number of live births. Any integer >= 1, though with 1 of course
+#' the risk reduction is 0 (or close to it due to numerical reasons I didn't bother
+#' handling separately).
+#' @param qf The father's PRS quantile, in range of 0-1. 
+#' @param qm The mother's PRS quantile, in range of 0-1.
+#' @param p The probability of live birth, in range of 0-1.
+#' 
+#' @return The relative risk reduction.
+#' 
+#' @examples
+#' # The risk when one parent is in the top 5% of PRS, and the second in the median.
+#' risk_reduction_lowest_conditional_bin(0.05, 0.01, 10, 0.95, 0.5, 0.5)
+#'
+#' @export
+risk_reduction_lowest_conditional_bin = function(r2,K,n,qf,qm,p)
 {
+  stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, n >=1,
+            qf > 0, qf < 1,
+            qm > 0, qm < 1,
+            p > 0, p <= 1)
+  
   r = sqrt(r2)
   zk = qnorm(K, lower.tail=F)
   zqf = qnorm(qf)
   zqm = qnorm(qm)
-  if (parental_avg_given)
-  {
-    # It is assumed that what is given is directly the parental average, so that the paternal and maternal quantiles are the same (both representing the quantile of the parental average)
-    c = zqf * r/sqrt(2)
-  } else {
-    c = (zqf+zqm)/2 * r
-  }
+  c = (zqf+zqm)/2 * r
+  
   baseline = pnorm((zk-c)/sqrt(1-r2/2),lower.tail=F)
   integrand_lowest_cond = function(t)
   {
@@ -295,27 +492,45 @@ risk_reduction_lowest_conditional_bin = function(r2,K,n,qf,qm,relative=T,parenta
   }
   # risk = integrate(integrand_lowest_cond,-Inf,Inf,rel.tol=1e-9)$value
   risk = integrate(integrand_lowest_cond,-Inf,Inf, abs.tol = baseline * 1e-4)$value
-  if (relative) {
-    reduction = (baseline-risk)/baseline
-  } else {
-    reduction = baseline-risk
-  }
+  reduction = (baseline-risk)/baseline
   return(list(rr=reduction, baseline=baseline, risk=risk))
 }
 
-risk_reduction_lowest_conditional_pois = function(r2,K,lambda,qf,qm,relative=T,parental_avg_given=F)
+#' Risk reduction using the lowest PRS strategy given the parents' PRS, when the expected number of live births is poisson
+#' 
+#' Calculate the relative risk reduction of the lowest PRS embryo, 
+#' when the parents' PRS is known (qf and qm), based on the 
+#' PRS accuracy ($r^2$), disease prevalence (K) and expected number of live births (lambda).
+#' In the calculator we use lambda = n * p, where p is the probability of live birth and
+#' n the expected number of embryos.
+#' 
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param lambda The expected number of live births. Any integer >= 1.
+#' @param qf The father's PRS quantile, in range of 0-1. 
+#' @param qm The mother's PRS quantile, in range of 0-1.
+#' 
+#' @return The relative risk reduction.
+#' 
+#' @examples
+#' # The risk when one parent is in the top 5% of PRS, and the second in the median.
+#' risk_reduction_lowest_conditional_pois(0.05, 0.01, 5, 0.95, 0.5)
+#'
+#' @export
+risk_reduction_lowest_conditional_pois = function(r2,K,lambda,qf,qm)
 {
+  stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, lambda > 0,
+            qf > 0, qf < 1,
+            qm > 0, qm < 1)
+  
   r = sqrt(r2)
   zk = qnorm(K, lower.tail=F)
   zqf = qnorm(qf)
   zqm = qnorm(qm)
-  if (parental_avg_given)
-  {
-    # It is assumed that what is given is directly the parental average, so that the paternal and maternal quantiles are the same (both representing the quantile of the parental average)
-    c = zqf * r/sqrt(2)
-  } else {
-    c = (zqf+zqm)/2 * r
-  }
+
+  c = (zqf+zqm)/2 * r
+  
   baseline = pnorm((zk-c)/sqrt(1-r2/2),lower.tail=F)
   integrand_lowest_cond = function(t)
   {
@@ -326,11 +541,7 @@ risk_reduction_lowest_conditional_pois = function(r2,K,lambda,qf,qm,relative=T,p
   }
   # risk = integrate(integrand_lowest_cond,-Inf,Inf,rel.tol=1e-9)$value
   risk = integrate(integrand_lowest_cond,-Inf,Inf, abs.tol = baseline * 1e-4)$value
-  if (relative) {
-    reduction = (baseline-risk)/baseline
-  } else {
-    reduction = baseline-risk
-  }
+  reduction = (baseline-risk)/baseline
   return(list(rr=reduction, baseline=baseline, risk=risk))
 }
 
@@ -385,34 +596,70 @@ sample_truncated_poisson <- function(num_samples, lambda) {
 
 # Sample from normal distribution with linear inequalities.
 # i.e. the n samples x are so Gx > zk (or <, depending on directions)
+# Could probably also use the function from tmvtnorm.
 sample_func <- function(n, zk, G, Sigma, directions) {
   d <- nrow(Sigma)
   if (ncol(G) != d) {stop("The number of cols in G should be the same as the dimension of Sigma.")}
   if (length(directions) != length(zk)) {stop("The vector directions should be the same length as the vector zk.")}
   if (!all(directions %in% c(">", "<"))) {stop("directions should be one of \">\", or \"<\".")}
   
-  chol_sigma <- chol(Sigma)
+  # chol_sigma <- chol(Sigma)
   # Using chol here for G_chol_sigma sometimes breaks things for 
   # numerical reasons, though from my tests, not in the cases we care about.
   # G_chol_sigma <- tcrossprod(G %*% chol_sigma) # This is G %*% Sigma %*% t(G)
-  G_chol_sigma <- G %*% Sigma %*% t(G)
-  temp <- Sigma %*% t(G) %*% solve(G_chol_sigma)
+  # G_chol_sigma <- G %*% Sigma %*% t(G)
+  tcross_Sigma_G <- tcrossprod(Sigma, G)
+  G_chol_sigma <- G %*% tcross_Sigma_G
+  temp <- tcross_Sigma_G %*% solve(G_chol_sigma)
   
   # Sample the truncated liabilities 'r'
-  r <- tmvtnorm::rtmvnorm(n, sigma = G_chol_sigma, 
+  r <- tmvtnorm::rtmvnorm(n, sigma = G_chol_sigma,
                           lower = ifelse(directions == ">", zk, -Inf),
                           upper = ifelse(directions == "<", zk, Inf),
                           algorithm = "gibbs")
+  
+  # My function is a bit faster
+  # r <- gibbs_sampling_truncated_normal(n, G_chol_sigma,
+  #                                      ifelse(directions == ">", zk, -Inf),
+  #                                      ifelse(directions == "<", zk, Inf))
   r <- t(r)
   
   # Sample an unconditional y ~ N(0, Sigma)
-  y <- mvnfast::rmvn(n, rep(0, d), sigma = chol_sigma, isChol = T)
+  # y <- rmvn(n, rep(0, d), sigma = chol_sigma, isChol = T)
+  y <- rmvn(n, rep(0, d), sigma = Sigma, isChol = F)
   
   # Correct y to get a sample from the conditional distribution P(z | Gz=r)
   correction <- temp %*% (r - tcrossprod(G, y))
   y + t(correction)
 }
 
+#' Risk reduction when conditioning on the family disease status.
+#' 
+#' A generic function which estimates the risk in either the lowest PRS embryo
+#' or high-risk exclusion strategy, and whether we use fixed number of live births,
+#' binomial or poisson.
+#' 
+#' @param iter The number of monte-carlo samples to use in our estimate.
+#' @param n Depending on the "random_strategy" variable, either the number of live births,
+#' number of embryos or expected number of embryos.
+#' @param r2 The PRS accuracy, in range of 0-1.
+#' @param h2 The disease heritability, in range of 0-1 and should be greater than _r2_.
+#' @param K The disease prevalence, in range of 0-1. Not including 0 and 1 since
+#' the extremes are not really interesting.
+#' @param sick_parents The number of parents which are known to be with the disease.
+#' @param no_sick_parents The number of parents which are known not to have the disease.
+#' @param sick_siblings The number of siblings which are known to be with the disease.
+#' @param no_sick_siblings The number of siblings which are known not to have the disease.
+#' @param qf The father's PRS quantile, in range of 0-1. NULL if unknown.
+#' @param qm The mother's PRS quantile, in range of 0-1. NULL if unknown.
+#' @param selection_strategy Either "lowest_prs" or "exclude_percentile".
+#' If exclude_percentile, should also provide exclusion_q.
+#' @param exclusion_q The threshold quantile, in range of 0-1. When possible, embryos with PRS greater than
+#' then 1-q quantile are excluded from the selection, and a random embryo
+#' is selected from the non-excluded ones. If there are no embryos after the
+#' exclusion, one embryo is selected at random. NULL if the strategy is "lowest_prs".
+#' @param random_strategy One of "Fixed", "Binomial" or "Poisson".
+#' @param p The probability of live birth (relevant only if random_strategy is either Binomial or Poisson), in range of 0-1.
 risk_parents_offspring_generic <- function(iter, n, r2, h2, K,
                                            sick_parents = 0,
                                            no_sick_parents = 0,
@@ -437,6 +684,7 @@ risk_parents_offspring_generic <- function(iter, n, r2, h2, K,
     stop("For 'exclude_percentile' strategy, you must provide 'exclusion_q'.")
   }
   if (!is.null(exclusion_q)) stopifnot(exclusion_q > 0, exclusion_q < 1)
+  if (random_strategy != "Fixed") stopifnot(p > 0, p <= 1)
   
   zk <- qnorm(1 - K)
   n_known_parents <- sick_parents + no_sick_parents
@@ -451,7 +699,7 @@ risk_parents_offspring_generic <- function(iter, n, r2, h2, K,
   
   # Sample the parental scores and non-score component based on the family
   # history
-
+  
   # Not really pretty.
   if (is.null(qf)) {
     # Parental PRS is unknown
@@ -594,16 +842,27 @@ risk_parents_offspring_generic <- function(iter, n, r2, h2, K,
   } else if (selection_strategy == "exclude_percentile") {
     prs_threshold <- qnorm(exclusion_q, mean = 0, sd = sqrt(r2)) # Threshold on the absolute PRS scale
     
-    selected_score <- sapply(1:iter, function(i) {
-      eligible_scores <- embryo_scores[i, embryo_scores[i,] < prs_threshold]
-      if (length(eligible_scores) > 0) {
-        # Sample randomly from the eligible embryos
-        return(sample(eligible_scores, 1))
-      } else {
-        # If no embryo meets the criteria, sample one from the full set
-        return(sample(embryo_scores[i,], 1))
-      }
-    })
+    # selected_score <- sapply(1:iter, function(i) {
+    #   eligible_scores <- embryo_scores[i, embryo_scores[i,] < prs_threshold]
+    #   if (length(eligible_scores) > 0) {
+    #     # Sample randomly from the eligible embryos
+    #     return(sample(eligible_scores, 1))
+    #   } else {
+    #     # If no embryo meets the criteria, sample one from the full set
+    #     return(sample(embryo_scores[i,], 1))
+    #   }
+    # })
+    # eligible_scores <- embryo_scores < prs_threshold
+    # lengths <- rowSums(eligible_scores)
+    # selected_score <- sapply(1:iter, function(i) {
+    #   if(lengths[i] > 0) {
+    #     return(sample(embryo_scores[i, which(eligible_scores[i, ]==1)], 1))
+    #   }
+    #   else {
+    #     return(sample(embryo_scores[i, ], 1))
+    #   }
+    # })
+    selected_score <- selected_score_rcpp(embryo_scores, iter, prs_threshold)
   } else {
     stop("Invalid selection_strategy provided.")
   }
