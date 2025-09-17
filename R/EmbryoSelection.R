@@ -209,7 +209,7 @@ risk_reduction_exclude <- function(r2, K, q, n) {
 risk_reduction_lowest_conditional = function(r2,K,n,qf,qm)
 {
   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, n >=1,
-            qf < 0, qf < 1,
+            qf > 0, qf < 1,
             qm > 0, qf < 1)
   
   r = sqrt(r2)

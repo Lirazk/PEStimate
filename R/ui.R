@@ -150,7 +150,7 @@ plot_panel <- page_fillable(
                      slider_and_numeric("N", "Number of embryos:", 2, 10, 1, 5, "The number of embryos/births avaliable for selection.")),
     conditionalPanel(
       condition = "input.lowestexclude == 'Exclude' & input.x_var != 'Percentile'",
-      slider_and_numeric("q", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.1, all embryos with PRS at the top 10% of the distribution of PRS in the population will be excluded. If no embryo is avaliable, select one at random.")))
+      slider_and_numeric("q", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.9, all embryos with PRS at the top 10% of the distribution of PRS in the population will be excluded. If no embryo is avaliable, select one at random.")))
   )),
   card(plotOutput(outputId = "distPlot"))),
   disclamir_and_date_text
@@ -205,7 +205,7 @@ calc_panel <- page_fillable(
                                                              round(exp(seq(log(0.001), log(0.3), length = 500)), digits = 4)))), 100*0.001, "Fraction of the population with the disease",
                                            post = "%"),
                         slider_and_numeric("r2", "PRS accuracy ($r^2$):", 0.01, 0.99, NULL, 0.05, "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15. Must be smaller than $h^2$ when conditioning on family disease status."),
-                        slider_and_numeric("q2", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.1, all embryos with PRS at the top 10% of the distribution of the PRS in the population will be excluded. If no embryo is avaliable, select one at random.")),
+                        slider_and_numeric("q2", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.9, all embryos with PRS at the top 10% of the distribution of the PRS in the population will be excluded. If no embryo is avaliable, select one at random.")),
                         slider_and_numeric("h2", "$h^2:$", 0.01, 0.99, 0.01, 0.4, "The heritability of the disease. Only relevant when conditioning on the family disease status."))),
                  card(card_header("Family information", style = "text-align: center;"),
                       layout_column_wrap(width=1/2,
@@ -251,8 +251,8 @@ calc_panel <- page_fillable(
                                                  choiceValues = c("Risk reduction", "Conditional"),
                                                  choiceNames = c("No", "Yes"), inline = T,
                                                ),
-                                               slider_and_numeric("qf2", "Father's polygenic risk score percentile:", 0.01, 0.99, 0.01, 0.5, paste("For example, if this parameter equal 0.05, the PRS of the father is at the top 5% of the distribution of the PRS in the population.")),
-                                               slider_and_numeric("qm2", "Mother's polygenic risk score percentile:", 0.01, 0.99, 0.01, 0.5, paste("For example, if this parameter equal 0.05, the PRS of the mother is at the top 5% of the distribution of the PRS in the population."))), 
+                                               slider_and_numeric("qf2", "Father's polygenic risk score percentile:", 0.01, 0.99, 0.01, 0.5, paste("For example, if this parameter equal 0.95, the PRS of the father is at the top 5% of the distribution of the PRS in the population.")),
+                                               slider_and_numeric("qm2", "Mother's polygenic risk score percentile:", 0.01, 0.99, 0.01, 0.5, paste("For example, if this parameter equal 0.95, the PRS of the mother is at the top 5% of the distribution of the PRS in the population."))), 
                                              card(card_header("Results"),
                                                   class = "alert alert-info", htmlOutput("summary")))))
   ),

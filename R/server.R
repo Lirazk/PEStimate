@@ -289,7 +289,7 @@ server <- function(input, output, session) {
       }
       else {
         # y <- sapply(x, function(x) risk_reduction_exclude(r2 = filts$r, K = filts$K, q = filts$q, n = x))
-        y <- sapply(x, function(x) risk_reduction_exclude(r2 = filts$r, K = filts$K/100, q = filts$q, n = x))
+        y <- sapply(x, function(x) risk_reduction_exclude(r2 = filts$r, K = filts$K/100, q = 1-filts$q, n = x))
         # if (input$relative_abs == "Absolute risk") y  <- y * input$K
       }
             
@@ -318,7 +318,7 @@ server <- function(input, output, session) {
         # if (input$relative_abs == "Absolute risk") y  <- y * x
       }
       else {
-        y <- sapply(x, function(x) risk_reduction_exclude(r2 = filts$r, K = x, q = filts$q, n = filts$N))
+        y <- sapply(x, function(x) risk_reduction_exclude(r2 = filts$r, K = x, q = 1-filts$q, n = filts$N))
         # if (input$relative_abs == "Absolute risk") y  <- y * x
       }
       # y <- binomial_random(y, input$p_lb, filts$N)
@@ -341,7 +341,7 @@ server <- function(input, output, session) {
       }
       else {
         # y <- sapply(x, function(x) risk_reduction_exclude(x, filts$K, filts$q, n = filts$N))
-        y <- sapply(x, function(x) risk_reduction_exclude(x, filts$K/100, filts$q, n = filts$N))
+        y <- sapply(x, function(x) risk_reduction_exclude(x, filts$K/100, 1-filts$q, n = filts$N))
         # if (input$relative_abs == "Absolute risk") y  <- y * input$K
       }
       # y <- binomial_random(y, input$p_lb, filts$N)
@@ -355,7 +355,7 @@ server <- function(input, output, session) {
       x <- seq(0.01, 0.99, length = 50)
       # print(x)
       # y <- sapply(x, function(x) risk_reduction_exclude(filts$r, filts$K, x, n = filts$N))
-      y <- sapply(x, function(x) risk_reduction_exclude(filts$r, filts$K/100, x, n = filts$N))
+      y <- sapply(x, function(x) risk_reduction_exclude(filts$r, filts$K/100, 1-x, n = filts$N))
       # if (input$relative_abs == "Absolute risk") y  <- y * input$K
       # subtitle <- "Exclude strategy"
       x_lab <- "Percentile to exclude"
@@ -491,10 +491,10 @@ server <- function(input, output, session) {
             risk_reduction_exclude_conditional(
               input$r2,
               K = input$K2/100,
-              q = input$q2,
+              q = 1-input$q2,
               n = input$N2,
-              qf = 1-input$qf2,
-              qm = 1-input$qm2)
+              qf = input$qf2,
+              qm = input$qm2)
         }
         else {
           temp <-
@@ -502,16 +502,16 @@ server <- function(input, output, session) {
               input$r2,
               K = input$K2/100,
               n = input$N2,
-              qf = 1-input$qf2,
-              qm = 1-input$qm2)
+              qf = input$qf2,
+              qm = input$qm2)
           if (binomial_model) {
             temp <-
               risk_reduction_lowest_conditional_bin(
                 input$r2,
                 K = input$K2/100,
                 n = input$N2,
-                qf = 1-input$qf2,
-                qm = 1-input$qm2, input$p_lb2)
+                qf = input$qf2,
+                qm = input$qm2, input$p_lb2)
           }
           else if (poisson_model) {
             temp <-
@@ -519,8 +519,8 @@ server <- function(input, output, session) {
                 input$r2,
                 K = input$K2/100,
                 lambda = input$N2 * input$p_lb2,
-                qf = 1-input$qf2,
-                qm = 1-input$qm2)
+                qf = input$qf2,
+                qm = input$qm2)
           }
         }
         print_result_conditional(temp)
@@ -529,7 +529,7 @@ server <- function(input, output, session) {
         if(exclude_strategy) {
           temp <- risk_reduction_exclude(input$r2,
                                          K = input$K2/100,
-                                         q = input$q2,
+                                         q = 1-input$q2,
                                          n = input$N2)
         }
         else {
@@ -563,10 +563,10 @@ server <- function(input, output, session) {
               input$parents_n-input$sick_parents,
               input$sick_siblings,
               input$siblings_n - input$sick_siblings, 
-              1-input$qf2,
-              1-input$qm2, 
+              input$qf2,
+              input$qm2, 
               "exclude_percentile",
-              input$q2)
+              1-input$q2)
           # temp <-
           #   risk_parents_offspring_generic(
           #     200000,
@@ -597,8 +597,8 @@ server <- function(input, output, session) {
               input$parents_n-input$sick_parents,
               input$sick_siblings,
               input$siblings_n - input$sick_siblings,
-              1-input$qf2,
-              1-input$qm2, random_strategy = ifelse(binomial_model, "Binomial",
+              input$qf2,
+              input$qm2, random_strategy = ifelse(binomial_model, "Binomial",
                                   ifelse(poisson_model, "Poisson", "Fixed")),
               p = input$p_lb2)
         }
@@ -617,7 +617,7 @@ server <- function(input, output, session) {
               input$sick_siblings,
               input$siblings_n - input$sick_siblings, 
               selection_strategy = "exclude_percentile",
-              exclusion_q = input$q2)
+              exclusion_q = 1-input$q2)
           
           # temp <-
           #   risk_parents_offspring_generic(
