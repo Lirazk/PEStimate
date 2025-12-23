@@ -226,6 +226,65 @@ server <- function(input, output, session) {
       updateSliderInput(session, "sick_siblings", value = input$siblings_n)
     }
   })
+  
+  preset_values <- list(
+    # r2, K2 (%), h2
+    "Coronary artery disease" = c(0.15, 37.6, 0.5),
+    "Type 2 diabetes" = c(0.13, 19.8, 0.72)
+  )
+  
+  updateSelectInput(session, "disease_presets",
+                    choices = c("Custom", 
+                                sort(names(preset_values))))
+  
+  observeEvent(input$r2 | input$K2 | input$h2, {
+    if(input$disease_presets != "Custom") {
+      # Check values of the current preset vs the predefined ones
+      cur_preset_values <- preset_values[[input$disease_presets]]
+      
+      cat("Testing/n")
+      cat(cur_preset_values)
+      cat("\n")
+      
+      is_preset_match <- isTRUE(all.equal(input$r2, cur_preset_values[1])) &&
+        isTRUE(all.equal(input$K2, cur_preset_values[2])) &&
+        isTRUE(all.equal(input$h2, cur_preset_values[3]))
+      
+      cat("Test result: ")
+      cat(is_preset_match)
+      cat("\n")
+      
+      if (!is_preset_match) {
+        updateSelectInput(session, "disease_presets", selected = "Custom")
+        # Probably update the custom to the current values?
+        values$custom_r2 <- input$r2
+        values$custom_K <- input$K2
+        values$custom_h2 <- input$h2
+      }
+    }
+  })
+  observeEvent(input$disease_presets, {
+    if(input$disease_presets == "Custom") {
+      updateSliderInput(session, "r2", value = values$custom_r2)
+      updateSliderTextInput(session, "K2", selected = values$custom_K)
+      updateSliderInput(session, "h2", value = values$custom_h2)
+    }
+    else {
+      # Save previous ones
+      values$custom_r2 <- input$r2
+      values$custom_K <- input$K2
+      values$custom_h2 <- input$h2
+      
+      # For now, suppose that there is only one option
+      # Change the numbers of course
+      cur_preset_values <- preset_values[[input$disease_presets]]
+      cat(cur_preset_values)
+      cat("\n")
+      updateSliderInput(session, "r2", value = cur_preset_values[1])
+      updateSliderTextInput(session, "K2", selected = cur_preset_values[2])
+      updateSliderInput(session, "h2", value = cur_preset_values[3])
+    }
+  })
 
   output$distPlot <- renderPlot({withProgress({
     if (!accepeted) showModal(modal)
