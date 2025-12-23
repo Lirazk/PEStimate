@@ -210,7 +210,13 @@ calc_panel <- page_fillable(
                                            post = "%"),
                         slider_and_numeric("r2", "PRS accuracy ($r^2$):", 0.01, 0.99, NULL, 0.05, "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15. Must be smaller than $h^2$ when conditioning on family disease status."),
                         slider_and_numeric("q2", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.9, all embryos with PRS at the top 10% of the distribution of the PRS in the population will be excluded. If no embryo is avaliable, select one at random.")),
-                        slider_and_numeric("h2", "$h^2:$", 0.01, 0.99, 0.01, 0.4, "The heritability of the disease. Only relevant when conditioning on the family disease status."))),
+                        slider_and_numeric("h2", "$h^2:$", 0.01, 0.99, 0.01, 0.4, "The heritability of the disease. Only relevant when conditioning on the family disease status.")),
+                   card(card_header("$r^2$ adjustments"),
+                        splitLayout(cellWidths = c("80%", "20%"),
+                                    selectInput("pop_adjust", "Adjust $r^2$ for population?",
+                                                choices = c("Original")), 
+                                    helpPopup(NULL, "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population", "bottom", "hover")),
+                        slider_and_numeric("r2_adjust", "Adjust $r^2$ for lower liability variance explained?", 0, 1, 0.01, 1, helptext = "If the reported $r^2$ is given for the population, and you want to adjust it lower."))),
                  card(card_header("Family information", style = "text-align: center;"),
                       layout_column_wrap(width=1/2,
                                          card(card_header("Family disease status",
@@ -291,3 +297,4 @@ ui <- page_navbar(
   nav_spacer(),
   nav_item(input_dark_mode(id = "dark_mode")),
 )
+

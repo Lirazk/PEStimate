@@ -227,6 +227,23 @@ server <- function(input, output, session) {
     }
   })
   
+  # Maybe should change it so it works with any pair?
+  # or maybe just not include it...
+  population_adjustment <- list(
+    "UK->Poland" = 0.938,
+    "UK->Italy" = 0.856,
+    "UK->Iran" = 0.722,
+    "UK->India" = 0.647,
+    "UK->China" = 0.486,
+    "UK->Caribbean" = 0.252,
+    "UK->Nigeria" = 0.18,
+    "UK->Ashkenazi Jewish" = 0.857
+  )
+  
+  updateSelectInput(session, "pop_adjust",
+                    choices = c("Original", 
+                                sort(names(population_adjustment))))
+  
   preset_values <- list(
     # r2, K2 (%), h2
     "Coronary artery disease" = c(0.15, 37.6, 0.5),
@@ -542,13 +559,20 @@ server <- function(input, output, session) {
                         label = "Number of live births")
     }
     
+    r2 <- as.numeric(input$r2)
+    # Population based adjustment?
+    r2 <- r2 * min(1, population_adjustment[[input$pop_adjust]])
+    # Other adjustment
+    r2 <- r2 * input$r2_adjust
+    
     if (!family_history) {
       # Either "normal" or "conditional"
       if(prs_condition) {
         if (exclude_strategy) {
           temp <-
             risk_reduction_exclude_conditional(
-              input$r2,
+              # input$r2,
+              r2,
               K = input$K2/100,
               q = 1-input$q2,
               n = input$N2,
@@ -558,7 +582,8 @@ server <- function(input, output, session) {
         else {
           temp <-
             risk_reduction_lowest_conditional(
-              input$r2,
+              # input$r2,
+              r2,
               K = input$K2/100,
               n = input$N2,
               qf = input$qf2,
@@ -566,7 +591,8 @@ server <- function(input, output, session) {
           if (binomial_model) {
             temp <-
               risk_reduction_lowest_conditional_bin(
-                input$r2,
+                # input$r2,
+                r2,
                 K = input$K2/100,
                 n = input$N2,
                 qf = input$qf2,
@@ -575,7 +601,8 @@ server <- function(input, output, session) {
           else if (poisson_model) {
             temp <-
               risk_reduction_lowest_conditional_pois(
-                input$r2,
+                # input$r2,
+                r2,
                 K = input$K2/100,
                 lambda = input$N2 * input$p_lb2,
                 qf = input$qf2,
@@ -586,21 +613,31 @@ server <- function(input, output, session) {
       }
       else {
         if(exclude_strategy) {
-          temp <- risk_reduction_exclude(input$r2,
+          temp <- risk_reduction_exclude(r2,
+                                         # input$r2,
                                          K = input$K2/100,
                                          q = 1-input$q2,
                                          n = input$N2)
         }
         else {
-          temp <- risk_reduction_lowest(input$r2, K = input$K2/100, 
+          temp <- risk_reduction_lowest(r2, K = input$K2/100, 
                                         n = input$N2)
+          
+          # temp <- risk_reduction_lowest(input$r2, K = input$K2/100, 
+          #                               n = input$N2)
           if (binomial_model) {
-            temp <- risk_reduction_lowest_bin(input$r2, K = input$K2/100, 
-                                          n = input$N2, input$p_lb2)
+            temp <- risk_reduction_lowest_bin(r2, K = input$K2/100, 
+                                              n = input$N2, input$p_lb2)
+            
+            # temp <- risk_reduction_lowest_bin(input$r2, K = input$K2/100, 
+            #                               n = input$N2, input$p_lb2)
           }
           else if (poisson_model) {
-            temp <- risk_reduction_lowest_pois(input$r2, K = input$K2/100, 
-                                              input$N2*input$p_lb2)
+            temp <- risk_reduction_lowest_pois(r2, K = input$K2/100, 
+                                               input$N2*input$p_lb2)
+            
+            # temp <- risk_reduction_lowest_pois(input$r2, K = input$K2/100, 
+            #                                   input$N2*input$p_lb2)
           }
         }
         print_result(temp, input$K2)
@@ -615,7 +652,8 @@ server <- function(input, output, session) {
             risk_parents_offspring_generic(
               200000,
               input$N2,
-              input$r2,
+              # input$r2,
+              r2,
               input$h2,
               input$K2/100,
               input$sick_parents,
@@ -649,7 +687,8 @@ server <- function(input, output, session) {
             risk_parents_offspring_generic(
               200000,
               input$N2,
-              input$r2,
+              # input$r2,
+              r2,
               input$h2,
               input$K2/100,
               input$sick_parents,
@@ -668,7 +707,8 @@ server <- function(input, output, session) {
             risk_parents_offspring_generic(
               200000,
               input$N2,
-              input$r2,
+              # input$r2,
+              r2,
               input$h2,
               input$K2/100,
               input$sick_parents,
@@ -699,7 +739,8 @@ server <- function(input, output, session) {
             risk_parents_offspring_generic(
               200000,
               input$N2,
-              input$r2,
+              # input$r2,
+              r2,
               input$h2,
               input$K2/100,
               input$sick_parents,
@@ -712,6 +753,20 @@ server <- function(input, output, session) {
         }
       }
       print_family_history(temp)
+    }
+    
+    if (input$r2 != r2) {
+      cat("<b><font color = \"red\">")
+      # if (input$pop_adjust != "Original") {
+      #   cat(sprintf("r-squared adjusted by %.2f due to population adjustment.\n",
+      #               population_adjustment[[input$pop_adjust]]))
+      # }
+      # if (input$r2_adjust != 1) {
+      #   cat(sprintf("r-squared adjusted by %.2f due to lower liability variance explained\n",
+      #               input$r2_adjust))
+      # }
+      cat(sprintf("r-squared adjusted to %.4f.", r2))
+      cat("</font></b>\n")
     }
     
     # cat("</div>")
@@ -744,7 +799,6 @@ server <- function(input, output, session) {
     tags$a("", tags$img(src = logo_src, width = "200px", height = "80px"))
   })
 }
-
 
 #' Shiny based calculator for risk reductions.
 #' 
