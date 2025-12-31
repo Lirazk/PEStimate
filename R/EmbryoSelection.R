@@ -1,4 +1,11 @@
+# library(shiny)
+# library(shinyWidgets)
+# library(bslib)
+# library(tinyplot)
+# library(shinyjs)
 # library(tmvtnorm)
+# library(mvnfast)
+# library(matrixStats)
 
 #' Risk reduction using the lowest PRS strategy
 #' 
@@ -754,8 +761,8 @@ risk_parents_offspring_generic <- function(iter, n, r2, h2, K,
     }
   } else {
     # Parental PRS is known
-    s_f_known <- sqrt(r2) * qf
-    s_m_known <- sqrt(r2) * qm
+    s_f_known <- sqrt(r2) * qnorm(qf)
+    s_m_known <- sqrt(r2) * qnorm(qm)
     s_p_mean <- rep((s_f_known + s_m_known) / 2, iter) # Constant vector
     
     if (is_w_zero) {
@@ -878,6 +885,411 @@ risk_parents_offspring_generic <- function(iter, n, r2, h2, K,
   return(c(baseline = baseline,
            selection = selection,
            relative_reduction = (baseline - selection) / baseline,
+           absolute_reduction = baseline - selection,
+           sd_of_estimate = sd(selection_risks) / sqrt(iter),
+           sd_of_baseline = sd(baseline_risks) / sqrt(iter)))
+}
+
+#' @import tmvtnorm
+#' @import mvnfast
+sample_func_optimized <- function(n, G, Sigma, lower, upper) {
+  d <- nrow(Sigma)
+  
+  tcross_Sigma_G <- tcrossprod(Sigma, G) 
+  G_tcross_Sigma_G <- G %*% tcross_Sigma_G
+
+  weight_mat <- solve(G_tcross_Sigma_G, G %*% Sigma)
+  
+  r <- tmvtnorm::rtmvnorm(n, sigma = G_tcross_Sigma_G, 
+                          lower = lower, upper = upper,
+                          algorithm = "gibbs")
+  
+  # Sometimes chol fails in rmvn, so that's a way to "fix" it
+  # Should probably also add the ability to use multicore
+  # chol_Sigma <- chol(Sigma, pivot=T)
+  # y <- mvnfast::rmvn(n, mu = rep(0, d), sigma = chol_Sigma, 
+  #                    isChol = T)
+  y <- MASS::mvrnorm(n, rep(0, d), Sigma)
+  Gy <- tcrossprod(y, G)
+  diff <- r - Gy
+  
+  y + (diff %*% weight_mat)
+}
+
+# Construct the equality and inequality matrices
+construct_G_eq <- function(prs_data, p) {
+  n <- length(unlist(prs_data))
+  G_eq <- matrix(0, nrow=n, ncol=p)
+  row_index <- 1
+  vals <- numeric(n)
+  
+  add_row <- function(cols, weights, val) {
+    G_eq[row_index, cols] <<- weights
+    vals[row_index]       <<- val
+    row_index             <<- row_index + 1
+  }
+  
+  # Indexes of the needed scores, and their weights
+  fixed_defs <- list(
+    gp1a = list(c(1), 1),
+    gp1b = list(c(4), 1),
+    gp2a = list(c(7), 1),
+    gp2b = list(c(10), 1),
+    p1   = list(c(1, 4, 13), c(0.5, 0.5, 1)),
+    p2   = list(c(7, 10, 16), c(0.5, 0.5, 1))
+  )
+  
+  for (name in names(fixed_defs)) {
+    val <- prs_data[[name]]
+    if (!is.null(val) && !is.na(val)) {
+      def <- fixed_defs[[name]]
+      add_row(def[[1]], def[[2]], val)
+    }
+  }
+  
+  dyn_col <- 19
+  
+  sib_configs <- list(
+    sib_p1   = list(fix=c(1, 4),         w=c(0.5, 0.5, 1)),
+    sib_p2   = list(fix=c(7, 10),        w=c(0.5, 0.5, 1)),
+    sib_self = list(fix=c(1,4,7,10,13,16), w=c(rep(0.25, 4), 0.5, 0.5, 1))
+  )
+  
+  for (grp in names(sib_configs)) {
+    prss <- prs_data[[grp]]
+    if (!is.null(prss)) {
+      cfg <- sib_configs[[grp]]
+      for (val in prss) {
+        if (!is.na(val)) {
+          add_row(c(cfg$fix, dyn_col), cfg$w, val)
+        }
+        dyn_col <- dyn_col + 3 
+      }
+    }
+  }
+  
+  # Trim unused rows
+  if (row_index > 1) {
+    G_eq <- G_eq[1:(row_index-1), , drop=FALSE]
+    vals <- vals[1:(row_index-1)]
+  } else {
+    G_eq <- matrix(0, nrow=0, ncol=p)
+    vals <- numeric(0)
+  }
+  
+  return(list(G_eq=G_eq, vals=vals))
+}
+
+construct_G_in <- function(history, p, zk) {
+  n <- length(unlist(history))
+  G_in <- matrix(0, nrow=n, ncol=p)
+  lower_in <- numeric(n)
+  upper_in <- numeric(n)
+  
+  row_index <- 1
+  
+  add_row <- function(cols, weights, status) {
+    G_in[row_index, cols] <<- weights
+    lower_in[row_index]   <<- ifelse(status == 1, zk, -Inf)
+    upper_in[row_index]   <<- ifelse(status == 1, Inf, zk)
+    row_index             <<- row_index + 1
+  }
+  
+  fixed_defs <- list(
+    gp1a = list(c(1:3), rep(1, 3)),
+    gp1b = list(c(4:6), rep(1, 3)),
+    gp2a = list(c(7:9), rep(1, 3)),
+    gp2b = list(c(10:12), rep(1, 3)),
+    p1   = list(c(1,2, 4,5, 13:15), c(rep(0.5, 4), rep(1, 3))),
+    p2   = list(c(7,8, 10,11, 16:18), c(rep(0.5, 4), rep(1, 3)))
+  )
+  
+  for (name in names(fixed_defs)) {
+    stat <- history[[name]]
+    if (!is.null(stat) && !is.na(stat) && stat != 0) {
+      def <- fixed_defs[[name]]
+      add_row(def[[1]], def[[2]], history[[name]])
+    }
+  }
+  
+  dyn_col <- 19
+  
+  sib_configs <- list(
+    sib_p1   = list(fix=c(1,2, 4,5),               w=c(rep(0.5, 4), rep(1, 3))),
+    sib_p2   = list(fix=c(7,8, 10,11),             w=c(rep(0.5, 4), rep(1, 3))),
+    sib_self = list(fix=c(1,2, 4,5, 7,8, 10,11, 13,14, 16,17), w=c(rep(0.25, 8), rep(0.5, 4), rep(1, 3)))
+  )
+  
+  for (grp in names(sib_configs)) {
+    stats <- history[[grp]]
+    if (!is.null(stats)) {
+      cfg <- sib_configs[[grp]]
+      for (stat in stats) {
+        if (!is.na(stat) & stat != 0) {
+          cols <- c(cfg$fix, dyn_col:(dyn_col+2))
+          add_row(cols, cfg$w, stat)
+        }
+        dyn_col <- dyn_col + 3
+      }
+    }
+  }
+  
+  # Trim
+  if (row_index > 1) {
+    G_in <- G_in[1:(row_index-1), , drop=FALSE]
+    lower_in <- lower_in[1:(row_index-1)]
+    upper_in <- upper_in[1:(row_index-1)]
+  } else {
+    G_in <- matrix(0, nrow=0, ncol=p)
+    lower_in <- numeric(0)
+    upper_in <- numeric(0)
+  }
+  
+  return(list(G_in=G_in, lower_in=lower_in, upper_in=upper_in))
+}
+
+#' Estimate relative risk reduction conditional on family history
+#' 
+#' Estimates the relative and absolute risk reduction of embryo selection 
+#' strategies by modeling the liability threshold model conditional on 
+#' specific family disease history and/or known Polygenic Risk Scores (PRS).
+#' 
+#' The function simulates family liabilities using a multivariate normal distribution,
+#' applies constraints based on `history` (inequality constraints) and `prs_data`
+#' (equality constraints), and estimates the disease risk of a selected embryo
+#' compared to a random embryo.
+#' 
+#' @param iter Integer. The number of Monte-Carlo samples to use for the estimate.
+#' @param n_embryos Integer. The number of available embryos. If `random_strategy`
+#'   is "Fixed", this is the exact number. If "Binomial" or "Poisson", this acts 
+#'   as the parameter N (trials) or basis for lambda, respectively.
+#' @param r2 Numeric (0-1). The variance explained by the PRS (SNP-heritability).
+#' @param h2 Numeric (0-1). The total narrow-sense heritability. Must be >= `r2`.
+#' @param K Numeric (0-1). The disease prevalence in the population.
+#' @param history A named list of clinical statuses. Allowed names: 
+#'   "p1", "p2", "gp1a", "gp1b", "gp2a", "gp2b", "sib_p1", "sib_p2", "sib_self".
+#'   Values should be integer vectors: 1 (Sick), -1 (Healthy), or 0/NA (Unknown).
+#' @param prs_data A named list of known PRS Z-scores (standardized). 
+#'   Allowed names matches `history`. Values should be numeric vectors.
+#' @param selection_strategy Character. Either "lowest_prs" (select embryo with 
+#'   lowest score) or "exclude_percentile" (exclude high risk, then random).
+#' @param exclusion_q Numeric (0-1). Required if `selection_strategy` is 
+#'   "exclude_percentile". Represents the quantile threshold (e.g., 0.9 for top 10% exclusion).
+#' @param random_strategy Character. One of "Fixed", "Binomial", or "Poisson". 
+#'   Determines how the number of viable embryos is simulated.
+#' @param p_lb Numeric (0-1). The probability of an embryo being live-born/viable.
+#'   Used only if `random_strategy` is "Binomial" or "Poisson".
+#'   
+#' @return A named vector containing:
+#'   \item{baseline}{Risk of a random embryo.}
+#'   \item{selection}{Risk of the selected embryo.}
+#'   \item{rel_red}{Relative risk reduction.}
+#'   \item{abs_red}{Absolute risk reduction.}
+#'   \item{sd_of_estimate}{Standard error of the selection estimate.}
+#'   \item{sd_of_baseline}{Standard error of the baseline estimate.}
+#'   
+#' @importFrom matrixStats rowMins
+#' @export
+risk_prediction_exact <- function(iter, n_embryos, r2, h2, K,
+                                  history = list(),
+                                  prs_data = list(),
+                                  selection_strategy = c("lowest_prs", "exclude_percentile"),
+                                  exclusion_q = NULL,
+                                  random_strategy = c("Fixed", "Binomial", "Poisson"),
+                                  p_lb = 0) {
+  # Input validations
+  selection_strategy <- match.arg(selection_strategy)
+  random_strategy <- match.arg(random_strategy)
+  if (iter < 1) stop("'iter' must be a positive integer.")
+  if (n_embryos < 1) stop("'n_embryos' must be a positive integer.")
+
+  if (r2 < 0 || r2 > 1) stop("'r2' must be between 0 and 1.")
+  if (h2 < 0 || h2 > 1) stop("'h2' must be between 0 and 1.")
+  if (r2 > h2) stop("'r2' cannot be greater than 'h2'.")
+  if (K <= 0 || K >= 1) stop("'K' must be strictly between 0 and 1.")
+  
+  if (selection_strategy == "exclude_percentile") {
+    if (is.null(exclusion_q)) {
+      stop("For 'exclude_percentile', 'exclusion_q' must be provided.")
+    }
+    if (exclusion_q <= 0 || exclusion_q >= 1) {
+      stop("'exclusion_q' must be between 0 and 1.")
+    }
+  }
+  
+  if (random_strategy != "Fixed") {
+    if (p_lb < 0 || p_lb > 1) stop("'p_lb' must be between 0 and 1.")
+  }
+  
+  valid_relatives <- c("p1", "p2", "gp1a", "gp1b", "gp2a", "gp2b",
+                       "sib_p1", "sib_p2", "sib_self")
+  
+  if (!all(names(history) %in% valid_relatives)) {
+    invalid <- setdiff(names(history), valid_relatives)
+    stop("Unknown names in 'history': ", paste(invalid, collapse = ", "))
+  }
+  if (!all(names(prs_data) %in% valid_relatives)) {
+    invalid <- setdiff(names(prs_data), valid_relatives)
+    stop("Unknown names in 'prs_data': ", paste(invalid, collapse = ", "))
+  }
+  
+  # Validate history and prs
+  hist_vals <- unlist(history)
+  if (!is.null(hist_vals) && !all(hist_vals %in% c(-1, 0, 1, NA))) {
+    stop("Values in 'history' must be: 1 (Sick), -1 (Healthy), 0 (Unknown), or NA.")
+  }
+  
+  prs_vals <- unlist(prs_data)
+  if (!is.null(prs_vals) && !is.numeric(prs_vals)) {
+    stop("Values in 'prs_data' must be numeric Z-scores.")
+  }
+  
+  # Start of calculations.
+  zk <- qnorm(1 - K)
+  
+  # Variances for the 4 grandparents and the rest
+  var_founder <- c(r2, h2 - r2, 1 - h2)
+  var_seg     <- c(r2/2, (h2 - r2)/2, 1 - h2)
+  # And the variance matrix for the default which is
+  # the grandparents+parents
+  diag_sigma  <- c(rep(var_founder, 4), rep(var_seg, 2))
+  
+  # Need to pad the lists in case there are siblings/cousins
+  # so the indexes would be consistent.
+  sanitize_lists <- function(h, p, groups) {
+    for(g in groups) {
+      n <- max(length(h[[g]]), length(p[[g]]))
+      if (n > 0) {
+        diag_sigma <<- c(diag_sigma, rep(var_seg, n))
+        if(length(h[[g]]) < n) h[[g]] <- c(h[[g]], rep(0, n - length(h[[g]])))
+        if(length(p[[g]]) < n) p[[g]] <- c(p[[g]], rep(NA, n - length(p[[g]])))
+      }
+    }
+    return(list(h=h, p=p))
+  }
+  
+  clean <- sanitize_lists(history, prs_data, 
+                          c("sib_p1", "sib_p2", "sib_self"))
+  history <- clean$h
+  prs_data <- clean$p
+  
+  # Construct the equality and inequality constraints matrices
+  p <- length(diag_sigma)
+  eq <- construct_G_eq(prs_data, p)
+  G_eq <- eq$G_eq
+  vals <- eq$vals
+  
+  inq <- construct_G_in(history, p, zk)
+  G_in <- inq$G_in
+  lower_in <- inq$lower_in
+  upper_in <- inq$upper_in
+  
+  Sigma <- diag(diag_sigma)
+  
+  # Start with the equality constraints
+  # which is basically X | G_eq X = vals
+  # using standard results on multivariate normal
+  mu_z <- rep(0, p)
+  Sigma_curr <- Sigma
+  
+  if (nrow(G_eq) > 0) {
+    Sigma_G_eq <- Sigma %*% t(G_eq)
+    
+    # New mean
+    vals2 <- solve(G_eq %*% Sigma_G_eq, vals)
+    mu_z <- as.numeric(Sigma_G_eq %*% vals2)
+    
+    # New Sigma
+    # A <- solve(G_eq %*% Sigma_G_eq, G_eq %*% t(Sigma))
+    A <- solve(G_eq %*% Sigma_G_eq, t(Sigma_G_eq))
+    Sigma_curr <- Sigma - Sigma_G_eq %*% A
+  }
+  
+  # Then apply the inequality constraints
+  if (nrow(G_in) > 0) {
+    # Shift thresholds based on the new mean from PRS
+    shift <- as.vector(G_in %*% mu_z)
+    
+    lower_adj <- lower_in - shift
+    upper_adj <- upper_in - shift
+
+    # Samples given the inequality
+    samples_resid <- sample_func_optimized(iter, G_in, 
+                                           Sigma_curr, 
+                                           lower_adj, 
+                                           upper_adj)
+    
+    # Add the mean back in case there are equality constraints
+    samples <- t(t(samples_resid) + mu_z)
+    
+  } else {
+    # No history, just PRS constraints (or nothing)
+    # Sample from the conditional normal
+    # chol_sigma <- chol(Sigma_curr, pivot=T)
+    # samples <- mvnfast::rmvn(iter, mu_z, 
+    #                          sigma = chol_sigma + 1e-8,
+    #                          isChol = T)
+    samples <- MASS::mvrnorm(iter, mu_z, 
+                             Sigma_curr)
+  }
+  
+  
+  # Next calculate the average parents' score and non-score
+  # component, as it is used for the embryos.
+  s_cols <- samples[, c(1,4,7,10, 13,16)]
+  w_cols <- samples[, c(2,5,8,11, 14,17)]
+  weights <- c(rep(0.25, 4), 0.5, 0.5)
+  
+  s_p_mean <- as.vector(s_cols %*% weights)
+  w_p_mean <- as.vector(w_cols %*% weights)
+  
+  # Baseline
+  liability_mean_baseline <- s_p_mean + w_p_mean
+  sd_baseline <- sqrt(1 - h2/2) 
+  baseline_risks <- pnorm(zk, mean = liability_mean_baseline, 
+                          sd = sd_baseline, lower.tail = FALSE)
+  baseline <- mean(baseline_risks)
+  
+  # Selection
+  if (random_strategy == "Binomial") {
+    ns <- sample_truncated_binomial(iter, n_embryos, p_lb)
+    max_n <- max(ns)
+    noise <- matrix(rnorm(iter * max_n, sd=sqrt(r2/2)), nrow=iter)
+    embryo_s_mendelian <- matrix(NA, iter, max_n)
+    for(i in 1:iter) if(ns[i]>0) embryo_s_mendelian[i, 1:ns[i]] <- noise[i, 1:ns[i]]
+  } else if (random_strategy == "Poisson") {
+    ns <- sample_truncated_poisson(iter, n_embryos * p_lb)
+    max_n <- max(ns)
+    noise <- matrix(rnorm(iter * max_n, sd=sqrt(r2/2)), nrow=iter)
+    embryo_s_mendelian <- matrix(NA, iter, max_n)
+    for(i in 1:iter) if(ns[i]>0) embryo_s_mendelian[i, 1:ns[i]] <- noise[i, 1:ns[i]]
+  } else {
+    embryo_s_mendelian <- matrix(rnorm(iter * n_embryos, sd = sqrt(r2/2)), nrow = iter, ncol = n_embryos)
+  }
+  
+  embryo_scores <- s_p_mean + embryo_s_mendelian
+  
+  if (selection_strategy == "lowest_prs") {
+    selected_score <- matrixStats::rowMins(embryo_scores, na.rm = T)
+  } else if (selection_strategy == "exclude_percentile") {
+    prs_threshold <- qnorm(exclusion_q, mean = 0, sd = sqrt(r2))
+    selected_score <- numeric(iter)
+    for(i in 1:iter) {
+      row <- embryo_scores[i, ]
+      row <- row[!is.na(row)]
+      valid <- row[row < prs_threshold]
+      if(length(valid) > 0) selected_score[i] <- sample(valid, 1)
+      else selected_score[i] <- sample(row, 1)
+    }
+  }
+  
+  liability_mean_selection <- selected_score + w_p_mean
+  sd_selection <- sqrt((h2 - r2)/2 + (1 - h2))
+  selection_risks <- pnorm(zk, mean = liability_mean_selection, sd = sd_selection, lower.tail = FALSE)
+  selection <- mean(selection_risks)
+  
+  return(c(baseline = baseline, selection = selection, 
+           relative_reduction = (baseline - selection)/baseline,
            absolute_reduction = baseline - selection,
            sd_of_estimate = sd(selection_risks) / sqrt(iter),
            sd_of_baseline = sd(baseline_risks) / sqrt(iter)))
