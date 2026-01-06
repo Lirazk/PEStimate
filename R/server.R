@@ -1,7 +1,3 @@
-# Maybe can move the withProgress to outside of the first {
-# library(shiny)
-# library(tinyplot)
-
 print_family_history <- function(temp) {
   cat(
     sprintf(
@@ -117,21 +113,23 @@ server <- function(input, output, session) {
     }
   })
   
-  values <- reactiveValues(disable = FALSE)
+  values <- reactiveValues(disable = FALSE, 
+                           previous_preset = "Custom",
+                           cur_preset = "Custom")
   
-  observeEvent(input$parents_n | input$siblings_n, {
-    if (input$parents_n == 0 & input$siblings_n == 0) {
-      shinyjs::disable("h2")
-      values$disable <- T
-    }
-    else {
-      shinyjs::enable("h2")
-      if (input$r2 >= input$h2) {
-        updateSliderInput(session, "r2", value = input$h2)
-      }
-      values$disable <- F
-    }
-  })
+  # observeEvent(input$parents_n | input$siblings_n, {
+  #   if (input$parents_n == 0 & input$siblings_n == 0) {
+  #     shinyjs::disable("h2")
+  #     values$disable <- T
+  #   }
+  #   else {
+  #     shinyjs::enable("h2")
+  #     if (input$r2 >= input$h2) {
+  #       updateSliderInput(session, "r2", value = input$h2)
+  #     }
+  #     values$disable <- F
+  #   }
+  # })
   
   # Is it still needed?
   choice_names <- c("PRS accuracy (r²)", "Disease prevalence", "Number of live births", 
@@ -209,14 +207,14 @@ server <- function(input, output, session) {
     }
   })
   
-  observeEvent(input$parents_n | input$sick_parents, {
-    # updateSliderInput(session, "sick_parents", max=input$parents_n,
-                      # value=pmin(input$parents_n, input$sick_parents))
-    if (input$sick_parents > input$parents_n) {
-      # input$sick_parents <- input$parents_n
-      updateSliderInput(session, "sick_parents", value = input$parents_n)
-    }
-  })
+  # observeEvent(input$parents_n | input$sick_parents, {
+  #   # updateSliderInput(session, "sick_parents", max=input$parents_n,
+  #                     # value=pmin(input$parents_n, input$sick_parents))
+  #   if (input$sick_parents > input$parents_n) {
+  #     # input$sick_parents <- input$parents_n
+  #     updateSliderInput(session, "sick_parents", value = input$parents_n)
+  #   }
+  # })
   
   observeEvent(input$siblings_n | input$sick_siblings, {
     # updateSliderInput(session, "sick_siblings", max=input$siblings_n,
@@ -224,6 +222,24 @@ server <- function(input, output, session) {
     if (input$sick_siblings > input$siblings_n) {
       # input$sick_siblings <- siblings_n
       updateSliderInput(session, "sick_siblings", value = input$siblings_n)
+    }
+  })
+  
+  observeEvent(input$sib_p1_n | input$sib_p1_sick, {
+    # updateSliderInput(session, "sick_siblings", max=input$siblings_n,
+    # value=pmin(input$siblings_n, input$sick_siblings))
+    if (input$sib_p1_sick > input$sib_p1_n) {
+      # input$sick_siblings <- siblings_n
+      updateSliderInput(session, "sib_p1_sick", value = input$sib_p1_n)
+    }
+  })
+  
+  observeEvent(input$sib_p2_n | input$sib_p2_sick, {
+    # updateSliderInput(session, "sick_siblings", max=input$siblings_n,
+    # value=pmin(input$siblings_n, input$sick_siblings))
+    if (input$sib_p2_sick > input$sib_p2_n) {
+      # input$sick_siblings <- siblings_n
+      updateSliderInput(session, "sib_p2_sick", value = input$sib_p2_n)
     }
   })
   
@@ -259,17 +275,17 @@ server <- function(input, output, session) {
       # Check values of the current preset vs the predefined ones
       cur_preset_values <- preset_values[[input$disease_presets]]
       
-      cat("Testing/n")
-      cat(cur_preset_values)
-      cat("\n")
+      # cat("Testing/n")
+      # cat(cur_preset_values)
+      # cat("\n")
       
       is_preset_match <- isTRUE(all.equal(input$r2, cur_preset_values[1])) &&
         isTRUE(all.equal(input$K2, cur_preset_values[2])) &&
         isTRUE(all.equal(input$h2, cur_preset_values[3]))
       
-      cat("Test result: ")
-      cat(is_preset_match)
-      cat("\n")
+      # cat("Test result: ")
+      # cat(is_preset_match)
+      # cat("\n")
       
       if (!is_preset_match) {
         updateSelectInput(session, "disease_presets", selected = "Custom")
@@ -280,7 +296,12 @@ server <- function(input, output, session) {
       }
     }
   })
+  
   observeEvent(input$disease_presets, {
+    
+    values$previous_preset <- values$cur_preset
+    values$cur_preset <- input$disease_presets
+    
     if(input$disease_presets == "Custom") {
       updateSliderInput(session, "r2", value = values$custom_r2)
       updateSliderTextInput(session, "K2", selected = values$custom_K)
@@ -288,15 +309,17 @@ server <- function(input, output, session) {
     }
     else {
       # Save previous ones
-      values$custom_r2 <- input$r2
-      values$custom_K <- input$K2
-      values$custom_h2 <- input$h2
+      if (values$previous_preset == "Custom") {
+        values$custom_r2 <- input$r2
+        values$custom_K <- input$K2
+        values$custom_h2 <- input$h2
+      }
       
       # For now, suppose that there is only one option
       # Change the numbers of course
       cur_preset_values <- preset_values[[input$disease_presets]]
-      cat(cur_preset_values)
-      cat("\n")
+      # cat(cur_preset_values)
+      # cat("\n")
       updateSliderInput(session, "r2", value = cur_preset_values[1])
       updateSliderTextInput(session, "K2", selected = cur_preset_values[2])
       updateSliderInput(session, "h2", value = cur_preset_values[3])
@@ -525,7 +548,6 @@ server <- function(input, output, session) {
   
   output$summary <- renderPrint({withProgress({
     if (!accepeted) showModal(modal)
-    # print(input$K2)
     # cat("<div class = \"alert alert-info\">")
     
     # if (input$r2 >= input$h2) {
@@ -534,8 +556,39 @@ server <- function(input, output, session) {
     # }
     
     # Possible states
-    family_history <- input$siblings_n > 0 | input$parents_n > 0
+    sick_parents <- (input$p1_status==1)+(input$p2_status==1)
+    no_sick_parents <- (input$p1_status==-1)+(input$p2_status==-1)
+    sick_siblings <- input$sick_siblings
+    no_sick_siblings <- input$siblings_n-sick_siblings
+    
+    sick_gp <- (input$gp1a_status == 1) +
+      (input$gp2a_status == 1) +
+      (input$gp1b_status == 1) +
+      (input$gp2b_status == 1)
+    
+    no_sick_gp <- (input$gp1a_status == -1) +
+      (input$gp2a_status == -1) +
+      (input$gp1b_status == -1) +
+      (input$gp2b_status == -1)
+    
+    family_history <- sick_parents + no_sick_parents +
+      sick_siblings + no_sick_siblings + 
+      sick_gp + no_sick_gp +
+      input$sib_p1_n + input$sib_p2_n > 0
+    
+    if (family_history) {
+      shinyjs::enable("h2")
+    }
+    else {
+      shinyjs::disable("h2")
+    }
+    
+    # family_history <- input$siblings_n > 0 | input$parents_n > 0
     prs_condition <- input$type2 == "Conditional"
+    # prs_condition <- !is.na(input$qf2)
+    # prs_condition <- F
+    # if (!is.na(input$p1_prs)) prs_list$p1 <- input$p1_prs
+    # if (!is.na(input$p2_prs)) prs_list$p2 <- input$p2_prs
     exclude_strategy <- input$lowestexclude2 != "Lowest"
     
     binomial_model <- input$det_random2 == "Binomial"
@@ -646,112 +699,178 @@ server <- function(input, output, session) {
     else {
       # Condition on family history
       set.seed(1)
-      if(prs_condition) {
-        if (exclude_strategy) {
-          temp <-
-            risk_parents_offspring_generic(
-              200000,
-              input$N2,
-              # input$r2,
-              r2,
-              input$h2,
-              input$K2/100,
-              input$sick_parents,
-              input$parents_n-input$sick_parents,
-              input$sick_siblings,
-              input$siblings_n - input$sick_siblings, 
-              input$qf2,
-              input$qm2, 
-              "exclude_percentile",
-              1-input$q2)
-          # temp <-
-          #   risk_parents_offspring_generic(
-          #     200000,
-          #     input$N2,
-          #     input$r2,
-          #     input$h2,
-          #     input$K2/100,
-          #     input$sick_parents,
-          #     input$parents_n-input$sick_parents,
-          #     input$sick_siblings,
-          #     input$siblings_n - input$sick_siblings, 
-          #     1-input$qf2,
-          #     1-input$qm2, 
-          #     "exclude_percentile",
-          #     input$q2, random_strategy = ifelse(binomial_model, "Binomial",
-          #                      ifelse(poisson_model, "Poisson", "Fixed")),
-          #     p = input$p_lb2)
-        }
-        else {
-          temp <-
-            risk_parents_offspring_generic(
-              200000,
-              input$N2,
-              # input$r2,
-              r2,
-              input$h2,
-              input$K2/100,
-              input$sick_parents,
-              input$parents_n-input$sick_parents,
-              input$sick_siblings,
-              input$siblings_n - input$sick_siblings,
-              input$qf2,
-              input$qm2, random_strategy = ifelse(binomial_model, "Binomial",
-                                  ifelse(poisson_model, "Poisson", "Fixed")),
-              p = input$p_lb2)
-        }
+      
+      prs_data <- list(p1=switch(prs_condition, 
+                                 sqrt(r2) * qnorm(input$qf2), 
+                                 NULL),
+                       p2=switch(prs_condition, 
+                                 sqrt(r2) * qnorm(input$qm2), 
+                                 NULL))
+      
+      make_history_vec <- function(n_sick, n_healthy) {
+        vec <- c()
+        if (n_sick > 0) vec <- c(vec, rep(1, n_sick))
+        if (n_healthy > 0) vec <- c(vec, rep(-1, n_healthy))
+        return(vec)
       }
-      else {
-        if (exclude_strategy) {
-          temp <-
-            risk_parents_offspring_generic(
-              200000,
-              input$N2,
-              # input$r2,
-              r2,
-              input$h2,
-              input$K2/100,
-              input$sick_parents,
-              input$parents_n-input$sick_parents,
-              input$sick_siblings,
-              input$siblings_n - input$sick_siblings, 
-              selection_strategy = "exclude_percentile",
-              exclusion_q = 1-input$q2)
-          
-          # temp <-
-          #   risk_parents_offspring_generic(
-          #     200000,
-          #     input$N2,
-          #     input$r2,
-          #     input$h2,
-          #     input$K2/100,
-          #     input$sick_parents,
-          #     input$parents_n-input$sick_parents,
-          #     input$sick_siblings,
-          #     input$siblings_n - input$sick_siblings, 
-          #     selection_strategy = "exclude_percentile",
-          #     exclusion_q = input$q2, random_strategy = ifelse(binomial_model, "Binomial",
-          #                                                      ifelse(poisson_model, "Poisson", "Fixed")),
-          #     p = input$p_lb2)
-        }
-        else {
-          temp <-
-            risk_parents_offspring_generic(
-              200000,
-              input$N2,
-              # input$r2,
-              r2,
-              input$h2,
-              input$K2/100,
-              input$sick_parents,
-              input$parents_n-input$sick_parents,
-              input$sick_siblings,
-              input$siblings_n - input$sick_siblings,
-              random_strategy = ifelse(binomial_model, "Binomial",
-                                         ifelse(poisson_model, "Poisson", "Fixed")),
-              p = input$p_lb2)
-        }
-      }
+      
+      hist_list <- list()
+      hist_list$p1 <- as.numeric(input$p1_status)
+      hist_list$p2 <- as.numeric(input$p2_status)
+      hist_list$gp1a <- as.numeric(input$gp1a_status)
+      hist_list$gp1b <- as.numeric(input$gp1b_status)
+      hist_list$gp2a <- as.numeric(input$gp2a_status)
+      hist_list$gp2b <- as.numeric(input$gp2b_status)
+      
+      hist_list$sib_p1 <- make_history_vec(input$sib_p1_sick, input$sib_p1_n-input$sib_p1_sick)
+      hist_list$sib_p2 <- make_history_vec(input$sib_p2_sick, input$sib_p2_n-input$sib_p2_sick)
+      hist_list$sib_self <- make_history_vec(input$sick_siblings, input$siblings_n-input$sick_siblings)
+      
+      # temp <-
+      #   risk_parents_offspring_generic(
+      #     200000,
+      #     input$N2,
+      #     # input$r2,
+      #     r2,
+      #     input$h2,
+      #     input$K2/100,
+      #     sick_parents,
+      #     no_sick_parents,
+      #     sick_siblings,
+      #     no_sick_siblings,
+      #     qf=switch(prs_condition, input$qf2, NULL),
+      #     qm=switch(prs_condition, input$qm2, NULL),
+      #     selection_strategy=ifelse(exclude_strategy,
+      #            "exclude_percentile",
+      #            "lowest_prs"),
+      #     exclusion_q=switch(exclude_strategy, 1-input$q2, NULL),
+      #     random_strategy = ifelse(binomial_model, "Binomial",
+      #                              ifelse(poisson_model, "Poisson", "Fixed")),
+      #     p = input$p_lb2)
+      
+      # print(hist_list)
+      # print(prs_data)
+      # temp <- c(0.5, 0.5, 0.5, 0.5, 0.5, 0.5)
+      
+      temp <- risk_prediction_exact(100000, input$N2,
+                                    r2, input$h2,
+                                    input$K2/100,
+                                    hist_list,
+                                    prs_data,
+                                    selection_strategy=ifelse(exclude_strategy,
+                                                              "exclude_percentile",
+                                                              "lowest_prs"),
+                                    exclusion_q=switch(exclude_strategy, 1-input$q2, NULL),
+                                    random_strategy = ifelse(binomial_model, "Binomial",
+                                                             ifelse(poisson_model, "Poisson", "Fixed")),
+                                    p_lb = input$p_lb2)
+      
+      # if(prs_condition) {
+      #   if (exclude_strategy) {
+      #     temp <-
+      #       risk_parents_offspring_generic(
+      #         200000,
+      #         input$N2,
+      #         # input$r2,
+      #         r2,
+      #         input$h2,
+      #         input$K2/100,
+      #         sick_parents,
+      #         no_sick_parents,
+      #         sick_siblings,
+      #         no_sick_siblings, 
+      #         input$qf2,
+      #         input$qm2, 
+      #         "exclude_percentile",
+      #         1-input$q2)
+      #     # temp <-
+      #     #   risk_parents_offspring_generic(
+      #     #     200000,
+      #     #     input$N2,
+      #     #     input$r2,
+      #     #     input$h2,
+      #     #     input$K2/100,
+      #     #     input$sick_parents,
+      #     #     input$parents_n-input$sick_parents,
+      #     #     input$sick_siblings,
+      #     #     input$siblings_n - input$sick_siblings, 
+      #     #     1-input$qf2,
+      #     #     1-input$qm2, 
+      #     #     "exclude_percentile",
+      #     #     input$q2, random_strategy = ifelse(binomial_model, "Binomial",
+      #     #                      ifelse(poisson_model, "Poisson", "Fixed")),
+      #     #     p = input$p_lb2)
+      #   }
+      #   else {
+      #     temp <-
+      #       risk_parents_offspring_generic(
+      #         200000,
+      #         input$N2,
+      #         # input$r2,
+      #         r2,
+      #         input$h2,
+      #         input$K2/100,
+      #         sick_parents,
+      #         no_sick_parents,
+      #         sick_siblings,
+      #         no_sick_siblings,
+      #         input$qf2,
+      #         input$qm2, random_strategy = ifelse(binomial_model, "Binomial",
+      #                             ifelse(poisson_model, "Poisson", "Fixed")),
+      #         p = input$p_lb2)
+      #   }
+      # }
+      # else {
+      #   if (exclude_strategy) {
+      #     temp <-
+      #       risk_parents_offspring_generic(
+      #         200000,
+      #         input$N2,
+      #         # input$r2,
+      #         r2,
+      #         input$h2,
+      #         input$K2/100,
+      #         sick_parents,
+      #         no_sick_parents,
+      #         sick_siblings,
+      #         no_sick_siblings, 
+      #         selection_strategy = "exclude_percentile",
+      #         exclusion_q = 1-input$q2)
+      #     
+      #     # temp <-
+      #     #   risk_parents_offspring_generic(
+      #     #     200000,
+      #     #     input$N2,
+      #     #     input$r2,
+      #     #     input$h2,
+      #     #     input$K2/100,
+      #     #     input$sick_parents,
+      #     #     input$parents_n-input$sick_parents,
+      #     #     input$sick_siblings,
+      #     #     input$siblings_n - input$sick_siblings, 
+      #     #     selection_strategy = "exclude_percentile",
+      #     #     exclusion_q = input$q2, random_strategy = ifelse(binomial_model, "Binomial",
+      #     #                                                      ifelse(poisson_model, "Poisson", "Fixed")),
+      #     #     p = input$p_lb2)
+      #   }
+      #   else {
+      #     temp <-
+      #       risk_parents_offspring_generic(
+      #         200000,
+      #         input$N2,
+      #         # input$r2,
+      #         r2,
+      #         input$h2,
+      #         input$K2/100,
+      #         sick_parents,
+      #         no_sick_parents,
+      #         sick_siblings,
+      #         no_sick_siblings,
+      #         random_strategy = ifelse(binomial_model, "Binomial",
+      #                                    ifelse(poisson_model, "Poisson", "Fixed")),
+      #         p = input$p_lb2)
+      #   }
+      # }
       print_family_history(temp)
     }
     
