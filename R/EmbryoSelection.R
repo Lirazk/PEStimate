@@ -1,3 +1,153 @@
+#' Unified Risk Prediction
+#' 
+#' Calculates disease risk and reduction using numerical integration.
+#' Supports population-level or parental-conditional estimates across all strategies.
+#' 
+#' @param r2 PRS accuracy (0-1).
+#' @param K Disease prevalence (0-1).
+#' @param n Number of embryos (Fixed) or N parameter (Binomial/Poisson).
+#' @param selection_strategy "lowest_prs" or "exclude_percentile".
+#' @param exclusion_q Percentile threshold for exclusion (required if strategy is exclude).
+#' @param qf Father's PRS quantile (0-1). Optional.
+#' @param qm Mother's PRS quantile (0-1). Optional.
+#' @param random_strategy "Fixed", "Binomial", or "Poisson".
+#' @param p_lb Probability of live birth (required for Binomial/Poisson).
+#' 
+#' @return A list: baseline (random risk), selection (strategy risk), rr (relative reduction).
+#' @examples
+#' # Expected when selecting the minimum PRS embryo
+#' risk_prediction_analytical(0.05, 0.01, 5)
+#' # Excluding the top 5% PRS
+#' risk_prediction_analytical(0.05, 0.01, 5, 
+#' selection_strategy = "exclude", 
+#' exclusion_q = 0.05)
+#' # The risk when one parent is in the top 5% of PRS, and the second in the median.
+#' risk_prediction_analytical(0.05, 0.01, 5, 
+#' selection_strategy = "lowest", 
+#' qf = 0.95, qm = 0.5)
+#' # The risk when one parent is in the top 5% of PRS, and the second in the median.
+#' # and excluding embryos below the 50% percentile.
+#' risk_prediction_analytical(0.05, 0.01, 5, 
+#' selection_strategy = "exclude",
+#' exclusion_q = 0.5,
+#' qf = 0.95, qm = 0.5)
+#' Same as the previous, but in the binomial/poisson case.
+#' risk_prediction_analytical(0.05, 0.01, 10, 
+#' random_strategy = "Binomial", 
+#' p_lb = 0.5)
+#' risk_prediction_analytical(0.05, 0.01, 10, 
+#' random_strategy = "Poisson", 
+#' p_lb = 0.5)
+#' risk_prediction_analytical(0.05, 0.01, 10, qf = 0.95, qm = 0.5,
+#' random_strategy = "Binomial", 
+#' p_lb = 0.5)
+#' risk_prediction_analytical(0.05, 0.01, 10, qf = 0.95, qm = 0.5,
+#' random_strategy = "Poisson", 
+#' p_lb = 0.5)
+#' @export
+risk_prediction_analytical <- function(r2,
+                                       K,
+                                       n,
+                                       selection_strategy = c("lowest_prs", "exclude_percentile"),
+                                       exclusion_q = NULL,
+                                       qf = NULL,
+                                       qm = NULL,
+                                       random_strategy = c("Fixed", "Binomial", "Poisson"),
+                                       p_lb = 1) {
+  if (n < 1) stop("'n' must be a positive integer.")
+  
+  if (r2 < 0 || r2 > 1) stop("'r2' must be between 0 and 1.")
+  if (K <= 0 || K >= 1) stop("'K' must be strictly between 0 and 1.")
+  strategy <- match.arg(selection_strategy)
+  model <- match.arg(random_strategy)
+  
+  r <- sqrt(r2)
+  zk <- qnorm(K, lower.tail = FALSE)
+  
+  if (!is.null(qf) && !is.null(qm)) {
+    # Conditional on parents PRS case
+    c_val <- (qnorm(qf) + qnorm(qm)) / 2 * r
+    baseline <- pnorm((zk - c_val) / sqrt(1 - r2 / 2), lower.tail = FALSE)
+    zk_adj <- zk - c_val
+    
+    # SD of the non-score liability component
+    sigma_e <- sqrt(1 - r2) 
+  } else {
+    # Unconditional case
+    baseline <- K
+    zk_adj <- zk
+    c_val <- 0
+    
+    # SD of the non-score liability component
+    sigma_e <- sqrt(1 - r2 / 2) 
+  }
+  
+  # SD of the Mendelian/Score component (t)
+  sigma_v <- r / sqrt(2) 
+  
+  if (strategy == "lowest_prs") {
+    integrand_lowest <- function(t) {
+      arg <- (zk_adj - t * sigma_e) / sigma_v
+      p_sick_given_t <- pnorm(arg, lower.tail = FALSE)
+      
+      # Probability weight based on embryo model
+      weight <- switch(
+        model,
+        "Fixed" = p_sick_given_t^n,
+        "Binomial" = ((1 - p_lb * (
+          1 - p_sick_given_t
+        ))^n - (1 - p_lb)^n) / (1 - (1 - p_lb)^n),
+        "Poisson" = {
+          lambda <- n * p_lb
+          (exp(lambda * (-(
+            1 - p_sick_given_t
+          ))) - exp(-lambda)) / (1 - exp(-lambda))
+        }
+      )
+      dnorm(t) * weight
+    }
+    
+    risk <- integrate(integrand_lowest, -Inf, Inf, 
+                      abs.tol = baseline * 1e-4)$value
+  }
+  else {
+    # High-risk exclusion case
+    if (is.null(qf) && is.null(qm)) {
+      # Just calling the already defined function since
+      # it is long enough.
+      RRR <- risk_reduction_exclude(r2, K, exclusion_q, n)
+      risk <- K - RRR * K
+    }
+    else {
+      # Threshold in terms of the score deviation t
+      zq <- qnorm(exclusion_q, lower.tail = FALSE)
+      gamma <- (zq * r - c_val) / sigma_v
+      
+      integrand_exclude <- function(t) {
+        dnorm(t) * pnorm((zk_adj - t * sigma_v) / sigma_e, lower.tail = FALSE)
+      }
+      
+      denom <- pnorm(gamma)
+      # If no embryos pass exclusion, we pick one at random (integrated over all t)
+      
+      int_low <- integrate(integrand_exclude, -Inf, gamma, abs.tol = 1e-6)$value
+      term1 <- (1 - (1 - denom)^n) * (int_low / denom)
+      
+      int_high <- integrate(integrand_exclude, gamma, Inf, abs.tol = 1e-6)$value
+      term2 <- (1 - denom)^(n - 1) * int_high
+      
+      risk <- term1 + term2
+    }
+  }
+  
+  return(list(
+    baseline = baseline,
+    selection = risk,
+    rr = (baseline - risk) / baseline
+  ))
+}
+
+# Older versions
 #' Risk reduction using the lowest PRS strategy
 #' 
 #' Calculate the relative risk reduction of the lowest PRS embryo based on the 
@@ -14,8 +164,6 @@
 #' 
 #' @examples
 #' risk_reduction_lowest(0.05, 0.01, 5)
-#'
-#' @export
 risk_reduction_lowest = function(r2,K,n)
 {
   stopifnot(r2 >=0, r2 <=1, K > 0,  K < 1, n >=1)
@@ -122,8 +270,6 @@ risk_reduction_lowest = function(r2,K,n)
 #' 
 #' @examples
 #' risk_reduction_exclude(0.05, 0.01, 0.05, 5) # Exclude top 5% risk.
-#'
-#' @export
 risk_reduction_exclude <- function(r2, K, q, n) {
   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, q > 0, q < 1, n >=1)
   
@@ -202,13 +348,11 @@ risk_reduction_exclude <- function(r2, K, q, n) {
 #' @examples
 #' # The risk when one parent is in the top 5% of PRS, and the second in the median.
 #' risk_reduction_lowest_conditional(0.05, 0.01, 5, 0.95, 0.5) 
-#'
-#' @export
 risk_reduction_lowest_conditional = function(r2,K,n,qf,qm)
 {
   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, n >=1,
             qf > 0, qf < 1,
-            qm > 0, qf < 1)
+            qm > 0, qm < 1)
   
   r = sqrt(r2)
   zk = qnorm(K, lower.tail=F)
@@ -250,9 +394,8 @@ risk_reduction_lowest_conditional = function(r2,K,n,qf,qm)
 #' 
 #' @examples
 #' # The risk when one parent is in the top 5% of PRS, and the second in the median.
-#' risk_reduction_lowest_conditional(0.05, 0.01, 5, 0.95, 0.5) 
-#'
-#' @export
+#' # and excluding embryos below the 50% percentile.
+#' risk_reduction_exclude_conditional(0.05, 0.01, 0.5, 5, 0.95, 0.5)
 risk_reduction_exclude_conditional = function(r2,K,q,n,qf,qm)
 {
   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, q > 0, q < 1, n >=1,
@@ -358,9 +501,6 @@ simulate_lowest_risk_two_traits = function(r2A,r2B,rho,KA,KB,ns,nfam=10000)
   return(results)
 }
 
-# I can probably refactor the next three function, since they are almost identical
-# to the non random case, just with a slightly different inner integral.
-
 #' Risk reduction using the lowest PRS strategy, when the number of live births is binomial
 #' 
 #' Calculate the relative risk reduction of the lowest PRS embryo based on the 
@@ -379,8 +519,6 @@ simulate_lowest_risk_two_traits = function(r2A,r2B,rho,KA,KB,ns,nfam=10000)
 #' 
 #' @examples
 #' risk_reduction_lowest_bin(0.05, 0.01, 10, 0.5)
-#'
-#' @export
 risk_reduction_lowest_bin <- function(r2, K, n, p)
 {
   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, n >=1,
@@ -418,8 +556,6 @@ risk_reduction_lowest_bin <- function(r2, K, n, p)
 #' 
 #' @examples
 #' risk_reduction_lowest_pois(0.05, 0.01, 5)
-#'
-#' @export
 risk_reduction_lowest_pois <- function(r2, K, lambda)
 {
   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, lambda > 0)
@@ -463,8 +599,6 @@ risk_reduction_lowest_pois <- function(r2, K, lambda)
 #' @examples
 #' # The risk when one parent is in the top 5% of PRS, and the second in the median.
 #' risk_reduction_lowest_conditional_bin(0.05, 0.01, 10, 0.95, 0.5, 0.5)
-#'
-#' @export
 risk_reduction_lowest_conditional_bin = function(r2,K,n,qf,qm,p)
 {
   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, n >=1,
@@ -512,8 +646,6 @@ risk_reduction_lowest_conditional_bin = function(r2,K,n,qf,qm,p)
 #' @examples
 #' # The risk when one parent is in the top 5% of PRS, and the second in the median.
 #' risk_reduction_lowest_conditional_pois(0.05, 0.01, 5, 0.95, 0.5)
-#'
-#' @export
 risk_reduction_lowest_conditional_pois = function(r2,K,lambda,qf,qm)
 {
   stopifnot(r2 >=0, r2 <=1, K > 0, K < 1, lambda > 0,
@@ -1051,7 +1183,7 @@ construct_G_in <- function(history, p, zk) {
 #' compared to a random embryo.
 #' 
 #' @param iter Integer. The number of Monte-Carlo samples to use for the estimate.
-#' @param n_embryos Integer. The number of available embryos. If `random_strategy`
+#' @param n Integer. The number of available embryos. If `random_strategy`
 #'   is "Fixed", this is the exact number. If "Binomial" or "Poisson", this acts 
 #'   as the parameter N (trials) or basis for lambda, respectively.
 #' @param r2 Numeric (0-1). The variance explained by the PRS (SNP-heritability).
@@ -1062,6 +1194,9 @@ construct_G_in <- function(history, p, zk) {
 #'   Values should be integer vectors: 1 (Sick), -1 (Healthy), or 0/NA (Unknown).
 #' @param prs_data A named list of known PRS Z-scores (standardized). 
 #'   Allowed names matches `history`. Values should be numeric vectors.
+#'   Note: You can use NA in cases where the PRS is unknown. For example, suppose you provide
+#'   the following history for the siblings, c(1, -1, 1). If you don't know the 
+#'   PRS of the second sibling, you can use c(PRS_1, NA, PRS_2) for the PRS.
 #' @param selection_strategy Character. Either "lowest_prs" (select embryo with 
 #'   lowest score) or "exclude_percentile" (exclude high risk, then random).
 #' @param exclusion_q Numeric (0-1). Required if `selection_strategy` is 
@@ -1081,7 +1216,7 @@ construct_G_in <- function(history, p, zk) {
 #'   
 #' @importFrom matrixStats rowMins
 #' @export
-risk_prediction_exact <- function(iter, n_embryos, r2, h2, K,
+risk_prediction_exact <- function(iter, n, r2, h2, K,
                                   history = list(),
                                   prs_data = list(),
                                   selection_strategy = c("lowest_prs", "exclude_percentile"),
@@ -1092,7 +1227,7 @@ risk_prediction_exact <- function(iter, n_embryos, r2, h2, K,
   selection_strategy <- match.arg(selection_strategy)
   random_strategy <- match.arg(random_strategy)
   if (iter < 1) stop("'iter' must be a positive integer.")
-  if (n_embryos < 1) stop("'n_embryos' must be a positive integer.")
+  if (n < 1) stop("'n' must be a positive integer.")
 
   if (r2 < 0 || r2 > 1) stop("'r2' must be between 0 and 1.")
   if (h2 < 0 || h2 > 1) stop("'h2' must be between 0 and 1.")
@@ -1243,19 +1378,19 @@ risk_prediction_exact <- function(iter, n_embryos, r2, h2, K,
   
   # Selection
   if (random_strategy == "Binomial") {
-    ns <- sample_truncated_binomial(iter, n_embryos, p_lb)
+    ns <- sample_truncated_binomial(iter, n, p_lb)
     max_n <- max(ns)
     noise <- matrix(rnorm(iter * max_n, sd=sqrt(r2/2)), nrow=iter)
     embryo_s_mendelian <- matrix(NA, iter, max_n)
     for(i in 1:iter) if(ns[i]>0) embryo_s_mendelian[i, 1:ns[i]] <- noise[i, 1:ns[i]]
   } else if (random_strategy == "Poisson") {
-    ns <- sample_truncated_poisson(iter, n_embryos * p_lb)
+    ns <- sample_truncated_poisson(iter, n * p_lb)
     max_n <- max(ns)
     noise <- matrix(rnorm(iter * max_n, sd=sqrt(r2/2)), nrow=iter)
     embryo_s_mendelian <- matrix(NA, iter, max_n)
     for(i in 1:iter) if(ns[i]>0) embryo_s_mendelian[i, 1:ns[i]] <- noise[i, 1:ns[i]]
   } else {
-    embryo_s_mendelian <- matrix(rnorm(iter * n_embryos, sd = sqrt(r2/2)), nrow = iter, ncol = n_embryos)
+    embryo_s_mendelian <- matrix(rnorm(iter * n, sd = sqrt(r2/2)), nrow = iter, ncol = n)
   }
   
   embryo_scores <- s_p_mean + embryo_s_mendelian
