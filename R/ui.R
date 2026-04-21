@@ -11,8 +11,8 @@ slider_and_numeric <- function(id, label, min, max, step, value, helptext = "",
     sliderTextInput(inputId = id,
                     # label = div(class = "position-relative d-flex align-items-center",
                     label = span(
-                                 label,
-                                 helpPopup(NULL, helptext, placement = placement, c("hover"))),
+                      label,
+                      helpPopup(NULL, helptext, placement = placement, c("hover"))),
                     choices = step,
                     grid = F, force_edges = T,
                     post = post)
@@ -91,28 +91,33 @@ about_panel <- page_fillable(h1("About", align = "center"),
                              h3("Information on family members"),
                              p("Users can specify the disease status and genetic risk of family members."),
                              HTML("<ol>
-                                   <li>Number of parents (of the embryos) with a known disease status (0,1, or 2).</li>
-                                   <li>Number of parents affected by the disease.</li>
-                                   <li>Number of siblings (of the embryos) with a known disease status.</li>
-                                   <li>Number of siblings affected by the disease.</li>
-                                   <li>The father's PRS percentile.</li>
-                                   <li>The mother's PRS percentile.</li>
+                                   <li>Whether the <b>grandparents</b> from either side are <b>sick</b>, <b>healthy</b> or with an <b>unknown</b> disease status.</li>
+                                   <li>Whether the <b>parents</b> from either side are <b>sick</b>, <b>healthy</b> or with an <b>unknown</b> disease status.</li>
+                                   <li>The PRS percentile of each <b>parent</b>.</li>
+                                   <li>Number of <b>siblings of each parent</b> with a known disease status.</li>
+                                   <li>Number of <b>siblings of each parent</b> affected by the disease.</li>
+                                   <li>Number of <b>siblings of the embryos</b> with a known disease status.</li>
+                                   <li>Number of <b>siblings of the embryos</b> affected by the disease.</li>
                                    </ol>"),
                              h3("Disease parameters"),
                              p("Users should specify the following parameters."),
                              HTML("<ol>
-                                   <li>PRS accuracy ($r^2$): The proportion of variance in liability to the disease explained by the PRS. This is a commonly used measure of PRS accuracy. $r^2$ is currently between 5-15% for most common polygenic diseases.</li>
+                                   <li>PRS accuracy ($r^2$). The proportion of variance in liability to the disease explained by the PRS. This is a commonly used measure of PRS accuracy. $r^2$ is currently between 5-20% for most common polygenic diseases.</li>
+                                   <li>$r^2$ adjustments. Users can adjust $r^2$ due to the target population.</li>
                                    <li>The disease prevalence. The proportion of individuals in the (adult) population affected by the disease.</li>
                                    <li>The heritability of the disease ($h^2$). The proportion of variance in the liability of the disease explained by additive genetic factors. (Only required when specifying the disease status of family members.)</li>
                                    </ol>"),
+                             p("Users can also select from predefined diseaes, with estimates taken from the literature."),
+                             # h3("$r^2$ adjustments"),
+                             # p("Users can adjust the $r^2$ due to being from a different population, or due to $r^2$ being measured in a different scale then the liability scale."),
                              h3("Output"),
                              p("The app reports the following outputs."),
                              HTML("<ol>
                                    <li>The baseline risk (i.e., the risk of a randomly selected embryo).</li>
                                    <li>The risk of the embryo selected based on PRS.</li>
+                                   <li>The probability of no risk reduction (one or no live births) when the number of live births is random.</li>
                                    <li>The relative risk reduction.</li>
                                    <li>The absolute risk reduction.</li>
-                                   <li>The number of patients who would need to screen their embryos to prevent a single future disease case.</li>
                                    </ol>"),
                              h2("References"),
                              HTML("<ol>
@@ -130,42 +135,42 @@ about_panel <- page_fillable(h1("About", align = "center"),
 plot_panel <- page_fillable(
   layout_columns(col_widths = c(4, 8), fill = F,
                  div(
-  card(
-    conditionalPanel("input.lowestexclude == \"Lowest\"",
-                     selectInput("det_random", label = "Is the number of embryos fixed?",
-                                 choices = c("Fixed live births", 
-                                             "Binomial",
-                                             "Poisson"),
-                                 width = "50%"),
-                     conditionalPanel("input.det_random != \"Fixed live births\"", 
-                                      slider_and_numeric("p_lb", "Probability of live birth:",
-                                                         0.01, 0.99, 0.01, value=0.3, 
-                                                         helptext = "Live birth rate per euploid embryo transfer"))),
-    radioButtons("x_var", "Variable for x axis", choiceNames = c("r²", "Disease prevalence", "Number of embryos"), 
-                 choiceValues = c("r2", "Disease prevalence", "Number of embryos"),
-                 selected = "r2",
-                 inline = T),
-    radioButtons(inputId = "lowestexclude",
-                 label = "Choose lowest risk embryo or exclude high risk embroys",
-                 choices = c("Lowest", "Exclude"), inline = T
-    )),
-  card(
-    conditionalPanel("input.x_var != \"r2\"",
-                     slider_and_numeric("r", "PRS accuracy ($r^2$):", 0.01, 1, NULL, 0.05, 
-                                        "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15.")),
-    conditionalPanel("input.x_var != \"Disease prevalence\"",
-                     slider_and_numeric("K", "Disease prevalence:", 0.001*100, 0.3*100, 
-                                        100*sort(unique(c(seq(0.001, 0.3, 0.001), 
-                                                          round(exp(seq(log(0.001), log(0.3), length = 500)), digits = 4)))), 100*0.001, 
-                                        "Fraction of the population with the disease",
-                                        post = "%")),
-    conditionalPanel("input.x_var != \"Number of embryos\"",
-                     slider_and_numeric("N", "Number of embryos:", 2, 10, 1, 5, "The number of embryos/births avaliable for selection.")),
-    conditionalPanel(
-      condition = "input.lowestexclude == 'Exclude' & input.x_var != 'Percentile'",
-      slider_and_numeric("q", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.9, all embryos with PRS at the top 10% of the distribution of PRS in the population will be excluded. If no embryo is avaliable, select one at random.")))
-  )),
-  card(plotOutput(outputId = "distPlot"))),
+                   card(
+                     conditionalPanel("input.lowestexclude == \"Lowest\"",
+                                      selectInput("det_random", label = "Is the number of embryos fixed?",
+                                                  choices = c("Fixed live births", 
+                                                              "Binomial",
+                                                              "Poisson"),
+                                                  width = "50%"),
+                                      conditionalPanel("input.det_random != \"Fixed live births\"", 
+                                                       slider_and_numeric("p_lb", "Probability of live birth:",
+                                                                          0.01, 0.99, 0.01, value=0.5,
+                                                                          helptext = "Live birth rate per euploid embryo transfer"))),
+                     radioButtons("x_var", "Variable for x axis", choiceNames = c("r²", "Disease prevalence", "Number of embryos"), 
+                                  choiceValues = c("r2", "Disease prevalence", "Number of embryos"),
+                                  selected = "r2",
+                                  inline = T),
+                     radioButtons(inputId = "lowestexclude",
+                                  label = "Choose lowest risk embryo or exclude high risk embroys",
+                                  choices = c("Lowest", "Exclude"), inline = T
+                     )),
+                   card(
+                     conditionalPanel("input.x_var != \"r2\"",
+                                      slider_and_numeric("r", "PRS accuracy ($r^2$):", 0.01, 1, NULL, 0.05, 
+                                                         "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15.")),
+                     conditionalPanel("input.x_var != \"Disease prevalence\"",
+                                      slider_and_numeric("K", "Disease prevalence:", 0.001*100, 0.3*100, 
+                                                         100*sort(unique(c(seq(0.001, 0.3, 0.001), 
+                                                                           round(exp(seq(log(0.001), log(0.3), length = 500)), digits = 4)))), 100*0.001, 
+                                                         "Fraction of the population with the disease",
+                                                         post = "%")),
+                     conditionalPanel("input.x_var != \"Number of embryos\"",
+                                      slider_and_numeric("N", "Number of embryos:", 2, 10, 1, 5, "The number of embryos/births avaliable for selection.")),
+                     conditionalPanel(
+                       condition = "input.lowestexclude == 'Exclude' & input.x_var != 'Percentile'",
+                       slider_and_numeric("q", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.9, all embryos with PRS at the top 10% of the distribution of PRS in the population will be excluded. If no embryo is avaliable, select one at random.")))
+                   )),
+                 card(plotOutput(outputId = "distPlot"))),
   disclamir_and_date_text
 )
 
@@ -178,119 +183,128 @@ embryo_parameters <- card(card_header("Embryo parameters", class = "bg-primary")
                                                        width = "50%"),
                                            conditionalPanel("input.det_random2 != \"Fixed live births\"", 
                                                             slider_and_numeric("p_lb2", "Probability of live birth:",
-                                                                               0.01, 0.99, 0.01, value=0.3,
+                                                                               0.01, 0.99, 0.01, value=0.48,
                                                                                helptext = "Live birth rate per euploid embryo transfer"))),
                           slider_and_numeric("N2", "Number of live births:", 2, 10, 1, 5, "The number of embryos/births avaliable for selection."),
                           radioButtons(
                             inputId = "lowestexclude2",
                             label = "Choose lowest risk embryo or exclude high risk embroys",
-                            choices = c("Lowest", "Exclude"), inline = T))
+                            choices = c("Lowest", "Exclude"), inline = T),
+                          slider_and_numeric("q2", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.9, all embryos with PRS at the top 10% of the distribution of the PRS in the population will be excluded. If no embryo is avaliable, select one at random.")))
 
 disease_parameters <- card(card_header("Disease parameters", class = "bg-primary"),
-     selectInput("disease_presets", "Disease Presets", 
-                 # choices = c("Custom", "Type 1 diabetes"),
-                 choices = "Custom",
-                 selected = "Custom"),
-     # slider_and_numeric("K2", "Disease prevalence:", 0.01, 1, 0.01, 0.5, NULL),
-     slider_and_numeric("K2", "Disease prevalence:", 100*0.001, 100*0.4, 
-                        100*sort(unique(c(seq(0.001, 0.4, 0.001), 
-                                          round(exp(seq(log(0.001), log(0.4), length = 500)), digits = 4)))), 100*0.001, "Fraction of the population with the disease",
-                        post = "%"),
-     slider_and_numeric("r2", "PRS accuracy ($r^2$):", 0.01, 0.99, NULL, 0.05, "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15. Must be smaller than $h^2$ when conditioning on family disease status."),
-     slider_and_numeric("q2", "Percentile from which to exclude embryos:", 0.01, 0.99, 0.01, 0.3, paste("Embryos with PRS above that percentile are excluded. For example, if the parameter equals 0.9, all embryos with PRS at the top 10% of the distribution of the PRS in the population will be excluded. If no embryo is avaliable, select one at random.")),
-     slider_and_numeric("h2", "$h^2:$", 0.01, 0.99, 0.01, 0.4, "The heritability of the disease. Only relevant when conditioning on the family disease status."))
+                           selectInput("disease_presets", "Disease Presets", 
+                                       # choices = c("Custom", "Type 1 diabetes"),
+                                       choices = "Custom",
+                                       selected = "Custom"),
+                           # slider_and_numeric("K2", "Disease prevalence:", 0.01, 1, 0.01, 0.5, NULL),
+                           slider_and_numeric("K2", "Disease prevalence:", 100*0.001, 100*0.5, 
+                                              100*sort(unique(c(seq(0.001, 0.5, 0.001), 
+                                                                round(exp(seq(log(0.001), log(0.5), length = 500)), digits = 4)))), 100*0.001, "Fraction of the population with the disease",
+                                              post = "%"),
+                           slider_and_numeric("r2", "PRS accuracy ($r^2$):", 0.01, 0.99, NULL, 0.05, "The proportion of the variance in the liability of the disease explained by the polygenic risk score. It is a measure of the accuracy of the score. Typically in the range 0.05-0.15. Must be smaller than $h^2$ when conditioning on family disease status."),
+                           selectizeInput("pop_adjust", span("Adjust $r^2$ for population?",
+                                                          helpPopup(NULL, "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population", "bottom", "hover")),
+                                       # tooltip(trigger = bsicons::bs_icon("question-circle-fill", size = "0.8em", style = "cursor: pointer; color: #007bc2;"),
+                                       # "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population")),
+                                       choices = c("Original"),
+                                       options = list(dropdownParent = 'body')),
+                           htmlOutput("r2_adjusted_output"),
+                           slider_and_numeric("h2", "$h^2:$", 0.01, 0.99, 0.01, 0.4, "The heritability of the disease. Only relevant when conditioning on the family disease status."))
 
-r2_adj <- card(card_header("$r^2$ adjustments", class = "bg-primary"),
-               selectInput("pop_adjust", span("Adjust $r^2$ for population?",
-                                              helpPopup(NULL, "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population", "bottom", "hover")),
-                           # tooltip(trigger = bsicons::bs_icon("question-circle-fill", size = "0.8em", style = "cursor: pointer; color: #007bc2;"),
-                           # "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population")),
-                           choices = c("Original")),
-               
-               # splitLayout(cellWidths = c("80%", "20%"),
-               #             selectInput("pop_adjust", "Adjust $r^2$ for population?",
-               #                         choices = c("Original")), 
-               #             helpPopup(NULL, "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population", "bottom", "hover")),
-               slider_and_numeric("r2_adjust", "Adjust $r^2$ for lower liability variance explained?", 0.01, 1, 0.01, 1, helptext = "If the reported $r^2$ is given for the population, and you want to adjust it to a lower liability $r^2$."))
+# r2_adj <- card(card_header("$r^2$ adjustments", class = "bg-primary"),
+#                selectInput("pop_adjust", span("Adjust $r^2$ for population?",
+#                                               helpPopup(NULL, "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population", "bottom", "hover")),
+#                            # tooltip(trigger = bsicons::bs_icon("question-circle-fill", size = "0.8em", style = "cursor: pointer; color: #007bc2;"),
+#                            # "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population")),
+#                            choices = c("Original")),
+#                
+#                # splitLayout(cellWidths = c("80%", "20%"),
+#                #             selectInput("pop_adjust", "Adjust $r^2$ for population?",
+#                #                         choices = c("Original")), 
+#                #             helpPopup(NULL, "Adjusts the $r^2$ based on estimates of partial correlation between UK biobank and other population", "bottom", "hover")),
+#                slider_and_numeric("r2_adjust", "Adjust $r^2$ for lower liability variance explained?", 0.01, 1, 0.01, 1, helptext = "If the reported $r^2$ is given for the population, and you want to adjust it to a lower liability $r^2$."),
+#                htmlOutput("r2_adjusted_output"))
+#                # HTML("<p>Note: r² adjustment due to population are based on estimated correlation between UK and other populations.</p>"))
 
 side <- function(num) {
   card(card_header(sprintf("Parent %d side", num), class = "bg-secondary text-white"),
-             card_body(
-               h5("Grandparents"),
-               div(class = "d-flex gap-2",
-                   selectInput(sprintf("gp%da_status", num), "Grandparent 1", 
-                               choices = c("Unknown"=0, "Sick"=1, "Healthy"=-1), width = "50%"),
-                   selectInput(sprintf("gp%db_status", num), "Grandparent 2", 
-                               choices = c("Unknown"=0, "Sick"=1, "Healthy"=-1), width = "50%")
-               ),
-               h5(sprintf("Parent %d", num)),
-               selectInput(sprintf("p%d_status", num), "Status", choices = c("Unknown"=0, "Sick"=1, "Healthy"=-1)),
-               # Collapsible PRS for Parent 1
-               # accordion(id="acc1",
-               #   accordion_panel(
-               #     "Known PRS (Optional)",
-               #     value = "prs_panel",
-               #     slider_and_numeric("qf2", "Parent 1 polygenic risk score percentile:", 0.01, 0.99, 0.01, 0.5, paste("For example, if this parameter equal 0.95, the PRS of the father is at the top 5% of the distribution of the PRS in the population.")),
-               #   ),
-               #   open = FALSE
-               # ),
-               radioButtons(
-                 inputId = "type2",
-                 label = "Condition on the parentel polygenic risk score?",
-                 # choices = c("Risk reduction", "Conditional", "Family History"), inline = T
-                 # choiceValues = c("Risk reduction", "Conditional", "Family History"),
-                 # choiceNames = c("No conditioning", "Conditional on the parents' polygenic risk score", "Conditional on family disease status"),
-                 choiceValues = c("Risk reduction", "Conditional"),
-                 choiceNames = c("No", "Yes"), inline = T,
-               ),
-               slider_and_numeric(ifelse(num==1, "qf2", "qm2"), 
-                                  sprintf("Parent %d polygenic risk score percentile:", num), 
-                                  0.01, 0.99, 0.01, 0.5, paste("For example, if this parameter equal 0.95, the PRS of the father is at the top 5% of the distribution of the PRS in the population.")),
-               hr(),
-               # Parent 1 Siblings (Aunts/Uncles)
-               h5(sprintf("Parent %d Siblings", num)),
-               # div(class = "d-flex gap-2",
-               layout_column_wrap(width=1/2,
-                   # numericInput("sib_p1_sick", "Sick", value = 0, min = 0, width = "50%"),
-                   # numericInput("sib_p1_healthy", "Healthy", value = 0, min = 0, width = "50%")
-                   sliderInput(sprintf("sib_p%d_n", num),
-                               label = "Number of sibling with known disease status:",
-                               min = 0,
-                               max = 20,
-                               value = 0,
-                               step = 1),
-                   sliderInput(sprintf("sib_p%d_sick", num),
-                               label = "Number of affected siblings:",
-                               min = 0,
-                               max = 20,
-                               value = 0,
-                               step = 1)
-               )
-             ))
+       card_body(
+         h5("Grandparents"),
+         div(class = "d-flex gap-2",
+             selectInput(sprintf("gp%da_status", num), "Grandparent 1", 
+                         choices = c("Unknown"=0, "Sick"=1, "Healthy"=-1), width = "50%"),
+             selectInput(sprintf("gp%db_status", num), "Grandparent 2", 
+                         choices = c("Unknown"=0, "Sick"=1, "Healthy"=-1), width = "50%")
+         ),
+         h5(sprintf("Parent %d", num)),
+         selectInput(sprintf("p%d_status", num), "Status", choices = c("Unknown"=0, "Sick"=1, "Healthy"=-1)),
+         # Collapsible PRS for Parent 1
+         # accordion(id="acc1",
+         #   accordion_panel(
+         #     "Known PRS (Optional)",
+         #     value = "prs_panel",
+         #     slider_and_numeric("qf2", "Parent 1 polygenic risk score percentile:", 0.01, 0.99, 0.01, 0.5, paste("For example, if this parameter equal 0.95, the PRS of the father is at the top 5% of the distribution of the PRS in the population.")),
+         #   ),
+         #   open = FALSE
+         # ),
+         radioButtons(
+           inputId = "type2",
+           label = "Condition on the parentel polygenic risk score?",
+           # choices = c("Risk reduction", "Conditional", "Family History"), inline = T
+           # choiceValues = c("Risk reduction", "Conditional", "Family History"),
+           # choiceNames = c("No conditioning", "Conditional on the parents' polygenic risk score", "Conditional on family disease status"),
+           choiceValues = c("Risk reduction", "Conditional"),
+           choiceNames = c("No", "Yes"), inline = T,
+         ),
+         slider_and_numeric(ifelse(num==1, "qf2", "qm2"), 
+                            sprintf("Parent %d polygenic risk score percentile:", num), 
+                            0.01, 0.99, 0.01, 0.5, paste("For example, if this parameter equal 0.95, the PRS of the father is at the top 5% of the distribution of the PRS in the population.")),
+         hr(),
+         # Parent 1 Siblings (Aunts/Uncles)
+         h5(sprintf("Parent %d Siblings", num)),
+         # div(class = "d-flex gap-2",
+         layout_column_wrap(width=1/2,
+                            # numericInput("sib_p1_sick", "Sick", value = 0, min = 0, width = "50%"),
+                            # numericInput("sib_p1_healthy", "Healthy", value = 0, min = 0, width = "50%")
+                            sliderInput(sprintf("sib_p%d_n", num),
+                                        label = "Number of sibling with known disease status:",
+                                        min = 0,
+                                        max = 20,
+                                        value = 0,
+                                        step = 1),
+                            sliderInput(sprintf("sib_p%d_sick", num),
+                                        label = "Number of affected siblings:",
+                                        min = 0,
+                                        max = 20,
+                                        value = 0,
+                                        step = 1)
+         )
+       ))
 }
 
 off <- card(
   card_header("Existing Offspring", class = "bg-secondary text-white"),
   card_body(h6("Siblings of the Embryo"),
-    # p(class="text-muted small", "Previous children of this couple"),
-    
-    # div(class = "d-flex gap-2 justify-content-center",
-    layout_column_wrap(width=1/2,
-        sliderInput("siblings_n",
-                    label = "Number of sibling with known disease status:",
-                    min = 0,
-                    max = 20,
-                    value = 0,
-                    step = 1),
-        sliderInput("sick_siblings",
-                    label = "Number of affected siblings:",
-                    min = 0,
-                    max = 20,
-                    value = 0,
-                    step = 1)
-        # numericInput("sib_self_sick", "Sick", value = 0, min = 0, width = "50%"),
-        # numericInput("sib_self_healthy", "Healthy", value = 0, min = 0, width = "50%")
-    )
+            # p(class="text-muted small", "Previous children of this couple"),
+            
+            # div(class = "d-flex gap-2 justify-content-center",
+            layout_column_wrap(width=1/2,
+                               sliderInput("siblings_n",
+                                           label = "Number of sibling with known disease status:",
+                                           min = 0,
+                                           max = 20,
+                                           value = 0,
+                                           step = 1),
+                               sliderInput("sick_siblings",
+                                           label = "Number of affected siblings:",
+                                           min = 0,
+                                           max = 20,
+                                           value = 0,
+                                           step = 1)
+                               # numericInput("sib_self_sick", "Sick", value = 0, min = 0, width = "50%"),
+                               # numericInput("sib_self_healthy", "Healthy", value = 0, min = 0, width = "50%")
+            )
   )
 )
 
@@ -320,14 +334,19 @@ calc_panel <- page_fillable(
   layout_columns(col_widths = c(3, 9), fill=F, 
                  div(
                    embryo_parameters, 
-                   disease_parameters, 
-                   r2_adj),
-  div(card(card_header("Family information", style = "text-align: center;", class = "bg-primary"),
-       layout_column_wrap(width=1/2,
-                          side(1),
-                          side(2)),
+                   disease_parameters),
+                   # r2_adj),
+                 div(card(card_header("Family information", style = "text-align: center;", class = "bg-primary"),
+                          layout_column_wrap(width=1/2,
+                                             side(1),
+                                             side(2)),
                           off),
-                      card(card_header("Results", class = "bg-success text-white"), htmlOutput("summary")))),
+                     # layout_column_wrap(width=1/2,
+                     # class = "sticky-lg-bottom sticky-cue z-3",
+                     card(card_header("Results", class = "bg-success text-white"),  
+                          htmlOutput("summary"),
+                          class = "sticky-lg-bottom sticky-cue z-3 opacity-75",
+                          style = "text-align: center;"))),#),
   disclamir_and_date_text
 )
 
@@ -347,15 +366,29 @@ calc_two_traits <- div(class = "well", fluidRow(column(4,
 addResourcePath(prefix = "Images", directoryPath = "Images/")
 
 ui <- page_navbar(
-  header=withMathJax(tags$head(HTML("<script type='text/x-mathjax-config' >
+  header=withMathJax(tags$head(
+  HTML("<script type='text/x-mathjax-config' >
     MathJax.Hub.Config({
     tex2jax: {inlineMath: [['$','$']]}
     });
-    </script>")), shinyjs::useShinyjs()),
+    </script>"),
+  tags$script(HTML(".sticky-cue {
+      border-top: 2px solid #dee2e6;
+      box-shadow: 0 -4px 8px;
+      transition: transform 0.2s ease, padding 0.2s ease;
+    }
+      .highlight { background:#fff9c4 !important; transition:background 1.5s; }
+    .msg { color:#d32f2f; font-size:0.9rem; margin-top:4px;}")),
+  tags$script(HTML("Shiny.addCustomMessageHandler('removeClassAfter', function(msg) {
+        var el = document.getElementById(msg.id);
+        if (!el) return;
+        setTimeout(function(){ el.classList.remove(msg.cls); }, msg.delay);
+      });"))), 
+  shinyjs::useShinyjs()),
   title=tags$a("", uiOutput("logo_ui")),
   nav_panel("About", about_panel),
-  nav_panel("Plot", plot_panel),
   nav_panel("Calculator", calc_panel),
+  nav_panel("Plot", plot_panel),
   nav_spacer(),
   nav_item(input_dark_mode(id = "dark_mode")),
 )
