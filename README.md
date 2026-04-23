@@ -45,7 +45,7 @@ To estimate risk conditional on family history
 ```{r}
 risk_prediction_exact(
   iter = 100000,
-  n_embryos = 5, 
+  n = 5, 
   r2 = 0.1, 
   h2 = 0.4, 
   K = 0.01,
